@@ -1,0 +1,336 @@
+{
+  "project": "fto-admet",
+  "tasks": {
+    "t00-bootstrap-box": {
+      "attempts": 0,
+      "commit": "",
+      "note": "",
+      "status": "PENDING"
+    },
+    "t00b-core-env": {
+      "attempts": 0,
+      "commit": "",
+      "note": "",
+      "status": "PENDING"
+    },
+    "t01-core-config": {
+      "attempts": 0,
+      "commit": "",
+      "note": "",
+      "status": "PENDING"
+    },
+    "t02-core-models": {
+      "attempts": 0,
+      "commit": "",
+      "note": "",
+      "status": "PENDING"
+    },
+    "t03-core-schemas": {
+      "attempts": 0,
+      "commit": "",
+      "note": "",
+      "status": "PENDING"
+    },
+    "t04-core-registry": {
+      "attempts": 0,
+      "commit": "",
+      "note": "",
+      "status": "PENDING"
+    },
+    "t05-core-gpu": {
+      "attempts": 0,
+      "commit": "",
+      "note": "",
+      "status": "PENDING"
+    },
+    "t06-core-ledger": {
+      "attempts": 0,
+      "commit": "",
+      "note": "",
+      "status": "PENDING"
+    },
+    "t07-core-dispatch": {
+      "attempts": 0,
+      "commit": "",
+      "note": "",
+      "status": "PENDING"
+    },
+    "t08-core-run": {
+      "attempts": 0,
+      "commit": "",
+      "note": "",
+      "status": "PENDING"
+    },
+    "t09-gate-core": {
+      "attempts": 0,
+      "commit": "",
+      "note": "",
+      "status": "PENDING"
+    },
+    "t10-model-rdkit_crippen": {
+      "attempts": 0,
+      "commit": "",
+      "note": "",
+      "status": "PENDING"
+    },
+    "t11-model-pksmart": {
+      "attempts": 0,
+      "commit": "",
+      "note": "",
+      "status": "PENDING"
+    },
+    "t12-gate-phase1": {
+      "attempts": 0,
+      "commit": "",
+      "note": "",
+      "status": "PENDING"
+    },
+    "t13-model-sfi": {
+      "attempts": 0,
+      "commit": "",
+      "note": "",
+      "status": "PENDING"
+    },
+    "t14-model-bbb_score": {
+      "attempts": 0,
+      "commit": "",
+      "note": "",
+      "status": "PENDING"
+    },
+    "t15-model-cns_mpo": {
+      "attempts": 0,
+      "commit": "",
+      "note": "",
+      "status": "PENDING"
+    },
+    "t16-model-boiled_egg": {
+      "attempts": 0,
+      "commit": "",
+      "note": "",
+      "status": "PENDING"
+    },
+    "t17-model-pains_brenk": {
+      "attempts": 0,
+      "commit": "",
+      "note": "",
+      "status": "PENDING"
+    },
+    "t18-model-toxicophores": {
+      "attempts": 0,
+      "commit": "",
+      "note": "",
+      "status": "PENDING"
+    },
+    "t19-model-lipinski_veber_qed": {
+      "attempts": 0,
+      "commit": "",
+      "note": "",
+      "status": "PENDING"
+    },
+    "t20-model-sascore": {
+      "attempts": 0,
+      "commit": "",
+      "note": "",
+      "status": "PENDING"
+    },
+    "t21-model-admet_ai": {
+      "attempts": 0,
+      "commit": "",
+      "note": "",
+      "status": "PENDING"
+    },
+    "t22-model-openadmet": {
+      "attempts": 0,
+      "commit": "",
+      "note": "",
+      "status": "PENDING"
+    },
+    "t23-model-ctoxpred2": {
+      "attempts": 0,
+      "commit": "",
+      "note": "",
+      "status": "PENDING"
+    },
+    "t24-model-cardiogenai": {
+      "attempts": 0,
+      "commit": "",
+      "note": "",
+      "status": "PENDING"
+    },
+    "t25-model-smartcyp": {
+      "attempts": 0,
+      "commit": "",
+      "note": "",
+      "status": "PENDING"
+    },
+    "t26-model-fame3r": {
+      "attempts": 0,
+      "commit": "",
+      "note": "",
+      "status": "PENDING"
+    },
+    "t27-model-swissadme": {
+      "attempts": 0,
+      "commit": "",
+      "note": "",
+      "status": "PENDING"
+    },
+    "t28-model-pgp": {
+      "attempts": 0,
+      "commit": "",
+      "note": "",
+      "status": "PENDING"
+    },
+    "t29-model-bayesherg": {
+      "attempts": 0,
+      "commit": "",
+      "note": "",
+      "status": "PENDING"
+    },
+    "t30-model-cardiotox_net": {
+      "attempts": 0,
+      "commit": "",
+      "note": "",
+      "status": "PENDING"
+    },
+    "t31-model-rascore": {
+      "attempts": 0,
+      "commit": "",
+      "note": "",
+      "status": "PENDING"
+    },
+    "t32-model-aizynthfinder": {
+      "attempts": 0,
+      "commit": "",
+      "note": "",
+      "status": "PENDING"
+    },
+    "t33-model-opera": {
+      "attempts": 0,
+      "commit": "",
+      "note": "",
+      "status": "PENDING"
+    },
+    "t34-model-pbpk": {
+      "attempts": 0,
+      "commit": "",
+      "note": "",
+      "status": "PENDING"
+    },
+    "t35-model-admetlab3": {
+      "attempts": 0,
+      "commit": "",
+      "note": "",
+      "status": "PENDING"
+    },
+    "t36-model-ochem_ppb": {
+      "attempts": 0,
+      "commit": "",
+      "note": "",
+      "status": "PENDING"
+    },
+    "t37-sop-watanabe_renal": {
+      "attempts": 0,
+      "commit": "",
+      "note": "",
+      "status": "PENDING"
+    },
+    "t38-sop-watanabe_pgp_brain": {
+      "attempts": 0,
+      "commit": "",
+      "note": "",
+      "status": "PENDING"
+    },
+    "t39-sop-protox": {
+      "attempts": 0,
+      "commit": "",
+      "note": "",
+      "status": "PENDING"
+    },
+    "t40-agg-lipophilicity": {
+      "attempts": 0,
+      "commit": "",
+      "note": "",
+      "status": "PENDING"
+    },
+    "t41-agg-solubility": {
+      "attempts": 0,
+      "commit": "",
+      "note": "",
+      "status": "PENDING"
+    },
+    "t42-agg-metabolism": {
+      "attempts": 0,
+      "commit": "",
+      "note": "",
+      "status": "PENDING"
+    },
+    "t43-agg-clearance": {
+      "attempts": 0,
+      "commit": "",
+      "note": "",
+      "status": "PENDING"
+    },
+    "t44-agg-distribution": {
+      "attempts": 0,
+      "commit": "",
+      "note": "",
+      "status": "PENDING"
+    },
+    "t45-agg-ppb": {
+      "attempts": 0,
+      "commit": "",
+      "note": "",
+      "status": "PENDING"
+    },
+    "t46-agg-permeability": {
+      "attempts": 0,
+      "commit": "",
+      "note": "",
+      "status": "PENDING"
+    },
+    "t47-agg-structural_alerts": {
+      "attempts": 0,
+      "commit": "",
+      "note": "",
+      "status": "PENDING"
+    },
+    "t48-agg-synthesizability": {
+      "attempts": 0,
+      "commit": "",
+      "note": "",
+      "status": "PENDING"
+    },
+    "t49-agg-toxicity": {
+      "attempts": 0,
+      "commit": "",
+      "note": "",
+      "status": "PENDING"
+    },
+    "t50-agg-druglikeness": {
+      "attempts": 0,
+      "commit": "",
+      "note": "",
+      "status": "PENDING"
+    },
+    "t51-agg-triage": {
+      "attempts": 0,
+      "commit": "",
+      "note": "",
+      "status": "PENDING"
+    },
+    "t52-agg-herg": {
+      "attempts": 0,
+      "commit": "",
+      "note": "",
+      "status": "PENDING"
+    },
+    "t53-gate-final": {
+      "attempts": 0,
+      "commit": "",
+      "note": "",
+      "status": "PENDING"
+    }
+  },
+  "updated": "2026-07-04T23:32:20.320723+00:00"
+}

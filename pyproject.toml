@@ -1,0 +1,21 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "fto-admet-core"
+version = "0.1.0"
+description = "FTO-ADMET pipeline core: registry / dispatch / schemas / ledger / gpu / run"
+requires-python = ">=3.11"
+# Runtime deps of the core package (also provided via conda in pixi.toml; listed here so a plain
+# `pip install -e .` outside pixi still works).
+dependencies = ["pydantic>=2", "pandas", "python-dotenv", "pyyaml"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["core"]
+
+[tool.pytest.ini_options]
+# Registered here so `-m "not model"` works everywhere, even before conftest.py exists (t09 adds it).
+markers = [
+    "model: test shells into a model's isolated env on the box (opt-in; excluded from the fast tier)",
+]

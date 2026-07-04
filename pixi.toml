@@ -1,0 +1,25 @@
+# Root/core environment - the env `core`, the aggregators, and the fast test tier run in.
+# UNLIKE per-model envs (which are solved on the box, linux-only), the core env is cross-platform and
+# multi-platform-solved: it has no CUDA/model deps, so one lock covers laptop + box. See tasks/t00b.
+[project]
+name = "fto-admet"
+channels = ["conda-forge"]
+# Adjust the mac platform to your laptop if needed (osx-64 for Intel). linux-64 is the box.
+platforms = ["osx-arm64", "linux-64"]
+
+[dependencies]
+python = "3.11.*"
+rdkit = "*" # cross-platform via conda-forge; core/aggregators use it for the fast tier
+pytest = "*"
+pydantic = ">=2"
+pandas = "*"
+pyyaml = "*"
+python-dotenv = "*"
+
+[pypi-dependencies]
+# the local core package, editable - this is what makes `import core` work after `pixi install`
+fto-admet-core = { path = ".", editable = true }
+
+[tasks]
+test = "pytest -m 'not model'" # the fast, box-free tier the gates run
+test-all = "pytest" # includes @pytest.mark.model (needs the box)

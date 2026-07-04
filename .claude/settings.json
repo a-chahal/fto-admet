@@ -1,0 +1,19 @@
+{
+  "_comment": "Project-scoped permissions for the autonomous build harness. deny rules are ABSOLUTE (no scope, and not even bypass mode, can re-allow them). We allow broad tooling for a trusted build repo but hard-deny catastrophic ops + secret reads. run.sh runs in --permission-mode dontAsk (fail-loud); unlisted tools fail instead of prompting. includeCoAuthoredBy=false strips the Claude co-author git trailer.",
+  "includeCoAuthoredBy": false,
+  "permissions": {
+    "allow": [
+      "Read", "Edit", "Write", "Glob", "Grep",
+      "Bash(git *)", "Bash(ssh rosenbluth *)", "Bash(pixi *)", "Bash(python *)",
+      "Bash(python3 *)", "Bash(pytest *)", "Bash(pip *)", "Bash(tmux *)",
+      "Bash(mkdir *)", "Bash(cp *)", "Bash(mv *)", "Bash(ls *)", "Bash(cat *)",
+      "Bash(rsync *)", "Bash(curl -fsSL *)", "Bash(scp *)"
+    ],
+    "deny": [
+      "Bash(rm -rf *)", "Bash(rm -fr *)", "Bash(sudo *)", "Bash(dd *)",
+      "Bash(mkfs *)", "Bash(:(){ *)", "Bash(chmod -R 777 *)",
+      "Bash(* | sh)", "Bash(* | bash)", "Bash(curl * | *)",
+      "Read(./.env)", "Read(./secrets/**)", "Read(**/*.key)", "Read(**/id_rsa*)"
+    ]
+  }
+}

@@ -1,0 +1,12 @@
+!.harness/logs/.gitkeep
+# harness runtime artifacts  -  ledger (STATE.json) and results are COMMITTED as the audit trail;
+# never commit envs/weights/caches/secrets (repo-wide discipline; see CLAUDE.md §0)
+# transient session logs are not.
+*.lock
+*.pyc
+.env
+.harness/logs/*
+.pixi/
+STATE.json.lock
+__pycache__/
+data/
