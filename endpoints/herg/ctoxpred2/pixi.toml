@@ -1,0 +1,45 @@
+# Isolated env for the ctoxpred2 adapter (t23) - the secondary multichannel cardiac ion-channel model
+# (hERG / NaV1.5 / CaV1.2). ONE ENV PER MODEL (CLAUDE.md §0/§3). CPU-only DNN (MC-dropout at inference);
+# no CUDA, no GPU.
+#
+# This file is INTENT only (channels + deps + pins). The exact resolved env is `pixi.lock`, which is
+# SOLVED ON THE BOX (Linux + conda-forge) and committed (CLAUDE.md §0). macOS cannot resolve the per-model
+# env, so `platforms` is linux-64 only and the lock carries a real `linux-64` section with package hashes
+# (the gate checks it to catch a fabricated/laptop-solved lock).
+#
+# Pins mirror upstream CToxPred2's install.sh (py3.9; numpy 1.23.5, scipy 1.11.4, scikit-learn 1.3.1,
+# pandas 2.0.3) - the versions that unpickle the shipped descriptor-preprocessing pipelines and load the
+# torch checkpoints. Two deliberate deviations from install.sh, both de-risking the env without touching
+# the science:
+#   - `mordredcommunity` (the maintained fork) supplies the importable `mordred` package used by
+#     `utils.compute_descriptor_features`. Upstream mordred is unmaintained on modern Python; the fork
+#     produces the same 1613 2D descriptor set, so the Nav1.5/Cav1.2 preprocessing pipelines transform it
+#     cleanly (verified on the box: feature dims 2453 / 2586 match the shipped checkpoints).
+#   - torch-geometric and MolVS are DROPPED: they are only used by the GUI / the GCN model / the 2D-image
+#     rendering, none of which the headless DNN prediction path (`nutils._generate_predictions_sl`) touches.
+# `openbabel = 3.1.1` supplies `from openbabel import pybel`, which PyBioMed's fingerprint module imports.
+# PyBioMed (ECFP2 + PubChem fingerprints) is a git-only package -> pypi-dependencies.
+[workspace]
+name = "ctoxpred2"
+version = "0.1.0"
+description = "CToxPred2 hERG/NaV1.5/CaV1.2 cardiac ion-channel toxicity (secondary, vote+confidence) adapter for the herg endpoint"
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+[dependencies]
+python = "3.9.*"
+rdkit = "*"
+mordredcommunity = "*"     # maintained mordred fork; provides the `mordred` import at runtime
+openbabel = "3.1.1.*"      # provides `from openbabel import pybel` (PyBioMed dependency)
+numpy = "1.23.5.*"         # upstream pin (unpickle / descriptor compatibility)
+scipy = "1.11.4.*"         # upstream pin
+scikit-learn = "1.3.1.*"   # pinned to the version that unpickles the shipped preprocessing pipelines
+pandas = "2.0.3.*"         # upstream pin
+joblib = "*"               # loads the descriptor-preprocessing pipelines
+
+[dependencies.pytorch]
+version = "1.12.1.*"
+build = "cpu*"             # CPU build (conda-forge); the DNN is tiny and runs on CPU
+
+[pypi-dependencies]
+PyBioMed = { git = "https://github.com/gadsbyfly/PyBioMed" }

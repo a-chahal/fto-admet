@@ -1,0 +1,5 @@
+# CToxPred2's model weights are NOT committed (CLAUDE.md §0: never commit weights). The upstream repo
+# ships them compressed (.rar) under CToxPred2/models; they are cloned + decompressed under
+# vendor/CToxPred2/models on the box at install time (see README "Environment / install"). Only the
+# vendored upstream *code* (vendor/CToxPred2/*.py + LICENSE) is committed.
+vendor/CToxPred2/models/
