@@ -1,0 +1,19 @@
+# Isolated env for the swissadme adapter - the in-code SwissADME lipophilicity consensus.
+# ONE ENV PER MODEL (CLAUDE.md §0/§3): pure RDKit, no upstream weights, no GPU, no CUDA. The MLOGP
+# reconstruction and the WLOGP lens are both plain RDKit; XLOGP3 (if ever used) is an EXTERNAL CLI
+# invoked out of the env, so it is not a dependency here.
+#
+# This file is INTENT only (channels + deps). The exact resolved env is `pixi.lock`, which is SOLVED ON
+# THE BOX (Linux + conda-forge) and committed (CLAUDE.md §0). macOS cannot resolve the per-model envs,
+# so `platforms` is linux-64 only and the lock carries a real `linux-64` section (the gate checks it to
+# catch a fabricated/laptop-solved lock).
+[project]
+name = "swissadme"
+version = "0.1.0"
+description = "In-code SwissADME lipophilicity consensus (WLOGP + MLOGP [+ XLOGP3 if present]) for the lipophilicity endpoint"
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+[dependencies]
+python = "3.11.*"
+rdkit = "*"
