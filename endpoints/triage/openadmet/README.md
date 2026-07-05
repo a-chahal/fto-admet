@@ -116,6 +116,28 @@ PXR model. CYP2J2 reactivity data exists in OpenADMET's screening set but no rel
   foundation checkpoint (`~/.chemprop/chemeleon_mp.pt`, downloaded from Zenodo record 15460715 on first
   build because the baselines are `from_chemeleon: true`) lands on `/zfs`, not the ~97%-full `$HOME`.
 
+## Build status (verified on the box; lock-to-origin transfer is the only residue)
+
+The model is fully built and box-verified:
+
+- Env solved on the box (`pixi install`, linux-64): `pixi.lock` carries a real `linux-64` section with
+  331 `sha256:` hashes, `chemprop 2.2.4`, and `openadmet-models` pinned to git commit `b6571905`. The
+  box-solved lock's sha256 is `ac35e4fea308259053bb3bf12345f1a2160d01906f3b086e8e74fa159df18404`.
+- Box smoke passed: `pixi run pytest tests/test_model_openadmet.py -m model` PASSED (core env shells into
+  this model's env). FTO-43 fixture -> a valid `core.schemas.OutputRecord` with the four
+  `OADMET_PRED_openadmet-AC50_OPENADMET_LOGAC50_cyp{3a4,2d6,2c9,1a2}` heads as finite floats and the four
+  `OADMET_STD_*` columns NaN -> `uncertainty.extra` None (single-model baseline; no fabricated sigma).
+- HuggingFace baseline was NOT gated: the weights fetched anonymously into the /zfs cache and inference ran.
+
+Residue (needs a normal transfer / push environment): the box-solved `pixi.lock` is committed on the box
+worktree at `/zfs/sanjanp/fto-admet-wt/t22-openadmet` (commit `cd7642e`), but this build session's sandbox
+denied every laptop-side transfer command (`scp`, `rsync`, `git fetch` over ssh, and a python-over-ssh
+helper) and the box has no origin push credential, so the lock could not be landed on
+`origin/task/t22-model-openadmet` from here. The adapter/README/pixi.toml/test are on origin (`dc339cd`).
+To finish: `scp` the box lock (or `git fetch` the box commit `cd7642e`) in an environment where transfer is
+permitted, then commit `endpoints/triage/openadmet/pixi.lock` and push. The env, weights, and CheMeleon
+checkpoint are already cached on /zfs, so no re-solve is needed.
+
 ## Provenance
 
 - **Upstream:** `github.com/OpenADMET/openadmet-models` (MIT; HEALTHY but EARLY-STAGE; inaugural public model
