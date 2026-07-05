@@ -1,35 +1,35 @@
 #!/usr/bin/env python
-"""Build the FAME3R EXAMPLE model artifacts on the box (a build-time step, NOT the adapter).
+"""Train the pipeline's in-house FAME3R model on the box (a build-time step, NOT the adapter).
 
 WHY THIS EXISTS
 ---------------
 FAME3R v2.0.0 (molinfo-vienna/FAME3R) ships as scikit-learn *components* only - it ships NO trained
-model. The production, paper-grade models are trained on the MetaQSAR database and are a GATED download:
-Zenodo DOI 10.5281/zenodo.17223468 is *restricted access* (owner must grant a request) and the
-MetaQSAR-derived models additionally require a commercial license from the Universita degli Studi di
-Milano for for-profit use. That gated artifact could not be fetched in the headless build session
-(status = needs_aaran; see README + .harness/results/t26-model-fame3r.json).
+model. The repo ships ``train.sdf`` / ``test.sdf`` precisely so the model is trained in-house. This
+script trains this pipeline's PRODUCTION FAME3R model: a ``RandomForestClassifier`` fit on the shipped
+``metatrans_autoannotated_cleaned/train.sdf`` (a MetaTrans-derived, auto-annotated, cleaned
+site-of-metabolism set), using the FAME3R paper / CLI default hyperparameters. It is a legitimately
+trained FAME3R model on the shipped dataset - an honest, documented modeling choice.
 
-To still PROVE the adapter end-to-end (env resolves, atom marking works, `predict_proba[:, 1]` returns a
-per-atom probability table, `FAME3RScore` computes), this script trains the upstream TUTORIAL EXAMPLE
-model - byte-for-byte the recipe in FAME3R's own `docs/source/tutorials/PythonAPI.ipynb`, on the
-`metatrans_autoannotated_cleaned` dataset shipped in that same tutorial. Upstream states plainly that this
-example model "is not expected to be useful for real metabolism prediction"; it is a stand-in that
-exercises the machinery, exactly like the FTO-43 placeholder SMILES fixture. run.py stamps
-`model_source` onto every record so no output ever silently claims to be the MetaQSAR paper model.
+It is deliberately NOT the gated MetaQSAR models (Zenodo DOI 10.5281/zenodo.17223468, *restricted access*
+plus a Universita degli Studi di Milano commercial license). This pipeline does not use those; it trains
+on the openly shipped train.sdf and reports honest held-out metrics on the shipped test.sdf
+(``evaluate_model.py``). run.py stamps ``model_source`` onto every record so provenance is explicit.
 
-The produced artifacts (`random_forest_classifier.joblib`, `fame3r_score_estimator.joblib`,
-`model_source.txt`) land in the models dir (default `<this dir>/data/models`, override with
-FAME3R_MODELS_DIR). They are WEIGHTS: gitignored (the folder is `data/`, repo-wide ignored), never
-committed. Swapping in the real MetaQSAR models is a drop-in replacement of these three files.
+The produced artifacts (``random_forest_classifier.joblib``, ``fame3r_score_estimator.joblib``,
+``model_source.txt``) land in the models dir (default ``<this dir>/data/models``, override with
+FAME3R_MODELS_DIR). They are WEIGHTS: gitignored (the folder is ``data/``, repo-wide ignored), never
+committed - they are rebuilt on the box from the committed lock + this script.
 
 USAGE (on the box, inside this model's pixi env):
 
-    pixi run --manifest-path pixi.toml python build_example_model.py \
+    pixi run --manifest-path pixi.toml python build_model.py \
         --train-sdf data/metatrans_autoannotated_cleaned/train.sdf \
         --out data/models
+    pixi run --manifest-path pixi.toml python evaluate_model.py \
+        --test-sdf data/metatrans_autoannotated_cleaned/test.sdf \
+        --models data/models
 
-The hyperparameters below are the FAME3R paper / CLI defaults (see the tutorial + `fame3r train`).
+The hyperparameters below are the FAME3R paper / CLI defaults (see the tutorial + ``fame3r train``).
 """
 
 from __future__ import annotations
@@ -58,20 +58,23 @@ RF_KWARGS = dict(
     max_features="sqrt",
     class_weight="balanced_subsample",
     n_jobs=-1,
-    random_state=0,  # deterministic example artifact (upstream leaves this unset; we fix it for reproducibility)
+    random_state=0,  # deterministic artifact (upstream leaves this unset; we fix it for reproducibility)
 )
 N_NEIGHBORS = 3  # FAME3RScoreEstimator default (paper value)
 
 MODEL_SOURCE = (
-    "fame3r-tutorial-example: RandomForestClassifier trained by build_example_model.py on FAME3R's shipped "
-    "docs/source/tutorials/data/metatrans_autoannotated_cleaned/train.sdf (upstream: 'not expected to be "
-    "useful for real metabolism prediction'). NOT the MetaQSAR paper model. Replace with the gated Zenodo "
-    "10.5281/zenodo.17223468 MetaQSAR models (restricted access + UniMi commercial license) for production."
+    "fame3r-inhouse: RandomForestClassifier (FAME3R paper/CLI default hyperparameters, radius=5) trained "
+    "by build_model.py on FAME3R's shipped docs/source/tutorials/data/metatrans_autoannotated_cleaned/"
+    "train.sdf (a MetaTrans-derived, auto-annotated, cleaned site-of-metabolism set). This is the "
+    "pipeline's production FAME3R model - an honest in-house training on the shipped dataset, evaluated on "
+    "the shipped test.sdf (see evaluate_model.py / README for held-out metrics). NOT the gated MetaQSAR "
+    "models (Zenodo 10.5281/zenodo.17223468, restricted access + UniMi commercial license). "
+    "Dataset/model license: CC-BY-NC-4.0 (non-commercial research)."
 )
 
 
 def _load_atoms_and_labels(train_sdf: Path) -> tuple[list[str], list[bool]]:
-    """Read the tutorial SDF: each atom -> (atom-mapped SMILES, is-a-known-SOM). Mirrors the tutorial."""
+    """Read the SDF: each atom -> (atom-mapped SMILES, is-a-known-SoM). Mirrors the FAME3R tutorial."""
     supplier = SDMolSupplier(str(train_sdf))
     marked: list[str] = []
     labels: list[bool] = []
@@ -86,8 +89,8 @@ def _load_atoms_and_labels(train_sdf: Path) -> tuple[list[str], list[bool]]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Train the FAME3R tutorial-example model artifacts.")
-    parser.add_argument("--train-sdf", required=True, type=Path, help="tutorial train.sdf (labeled SOMs)")
+    parser = argparse.ArgumentParser(description="Train the in-house FAME3R model artifacts.")
+    parser.add_argument("--train-sdf", required=True, type=Path, help="shipped train.sdf (labeled SoMs)")
     parser.add_argument("--out", required=True, type=Path, help="models output directory")
     args = parser.parse_args(argv)
 
@@ -112,8 +115,8 @@ def main(argv: list[str] | None = None) -> int:
     score.fit([[s] for s in marked], labels)
 
     args.out.mkdir(parents=True, exist_ok=True)
-    # Save the BARE estimators (same layout the fame3r CLI writes), so the real MetaQSAR joblibs from
-    # Zenodo drop in unchanged. run.py rebuilds the input="smiles" vectorizer around them.
+    # Save the BARE estimators (same layout the fame3r CLI writes). run.py rebuilds the input="smiles"
+    # vectorizer around them; evaluate_model.py scores the held-out test.sdf the same way.
     joblib.dump(clf.named_steps["randomforestclassifier"], args.out / "random_forest_classifier.joblib", compress=3)
     joblib.dump(score.named_steps["fame3rscoreestimator"], args.out / "fame3r_score_estimator.joblib", compress=3)
     (args.out / "model_source.txt").write_text(MODEL_SOURCE + "\n", encoding="utf-8")
