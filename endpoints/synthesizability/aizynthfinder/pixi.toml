@@ -1,0 +1,32 @@
+# Isolated env for the AiZynthFinder adapter (t32). ONE ENV PER MODEL (CLAUDE.md 0/3).
+#
+# AiZynthFinder (MolecularAI/aizynthfinder, AstraZeneca, MIT) is the third rung of the synthesizability
+# ladder: a real CASP retrosynthesis search (MCTS + a neural template-expansion policy) down to
+# purchasable precursors, NOT a classifier. It is PyPI-only (`pip install aizynthfinder`); it is NOT on
+# conda-forge (verified on the box, 5 Jul 2026: `pixi search aizynthfinder -c conda-forge` finds nothing).
+# So the package + its whole scientific stack (rdkit, onnxruntime, pandas, numpy, ...) come in as
+# pypi-dependencies over a conda-forge python 3.11 base. aizynthfinder 4.x requires python >=3.9,<3.12.
+#
+# HEAVY PART (task t32, landmine): the pip install alone cannot solve anything. AiZynthFinder needs a
+# configured STOCK SET (purchasable building blocks) + a downloaded expansion POLICY MODEL. Those are the
+# public USPTO policy + ZINC stock fetched once by the upstream `download_public_data` tool and CACHED
+# under /zfs (NEVER committed - CLAUDE.md 0). run.py resolves that config; see README for the exact
+# cache location and the one-time download command.
+#
+# This file is INTENT only. The exact resolved env is `pixi.lock`, SOLVED ON THE BOX (Linux, conda-forge
+# + PyPI). macOS/laptop cannot resolve the linux-64 wheels (onnxruntime etc.), so `platforms` is
+# linux-64 only and the committed lock carries a real `linux-64` section with package hashes (the gate
+# checks that to catch a fabricated/laptop-solved lock, CLAUDE.md 0/5).
+[workspace]
+name = "aizynthfinder"
+version = "0.1.0"
+description = "AiZynthFinder retrosynthesis route-search adapter for the synthesizability endpoint (shortlist rung); PyPI aizynthfinder over a conda python 3.11 base"
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+[dependencies]
+python = "3.11.*"   # aizynthfinder 4.x supports >=3.9,<3.12; 3.11 is the modern in-range choice
+pip = "*"           # base tools; the science stack itself arrives via pypi-dependencies below
+
+[pypi-dependencies]
+aizynthfinder = ">=4.4.1,<5"   # MolecularAI/aizynthfinder, MIT; brings rdkit, onnxruntime, pandas, numpy, pyyaml

@@ -1,0 +1,12 @@
+# The AiZynthFinder stock set + policy model (public USPTO template policy + ZINC stock, ~0.8 GB) are
+# fetched once with upstream `download_public_data` and CACHED on the box under
+# $FTO_ADMET_ENV_CACHE/aizynth-data (see README). Models/weights/data are NEVER committed (CLAUDE.md 0),
+# and the config.yml holds box-absolute paths, so nothing here belongs in git. Ignore any local copy.
+aizynth-data/
+*.onnx
+*.hdf5
+*.csv.gz
+config.yml
+
+# isolated pixi env (the box-solved lock is committed; the env itself is not)
+.pixi/
