@@ -1,0 +1,19 @@
+# Isolated env for the pains_brenk (PAINS + BRENK structural-alert) rule adapter. ONE ENV PER MODEL
+# (CLAUDE.md §0/§3): pure RDKit, no upstream weights, no GPU, no CUDA. The alert SMARTS ship inside
+# RDKit's built-in FilterCatalog (FilterCatalogs.PAINS = union of A/B/C, and FilterCatalogs.BRENK), so
+# rdkit is the only dependency, same intent as the t10 rdkit_crippen / t16 boiled_egg templates.
+#
+# This file is INTENT only (channels + deps). The exact resolved env is `pixi.lock`, which is SOLVED ON
+# THE BOX (Linux + conda-forge) and committed (CLAUDE.md §0). macOS cannot resolve the per-model envs,
+# so `platforms` is linux-64 only and the lock carries a real `linux-64` section (the gate checks it to
+# catch a fabricated/laptop-solved lock).
+[project]
+name = "pains_brenk"
+version = "0.1.0"
+description = "PAINS + BRENK structural-alert screen (RDKit FilterCatalog); serves the structural_alerts endpoint"
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+[dependencies]
+python = "3.11.*"
+rdkit = "*"
