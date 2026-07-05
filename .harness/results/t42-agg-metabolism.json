@@ -1,0 +1,17 @@
+{
+  "task": "t42-agg-metabolism",
+  "kind": "aggregator",
+  "status": "pass",
+  "attempts": 1,
+  "artifacts": [
+    "endpoints/metabolism/aggregate.py",
+    "endpoints/metabolism/test_aggregate.py"
+  ],
+  "smoke": {
+    "ran": true,
+    "ok": true,
+    "detail": "pixi run pytest endpoints/metabolism/test_aggregate.py -q => 14 passed. Synthetic SMARTCyp (low Score on atom k) + FAME3R (high prob on atom k) => ordinal rank-sum co-rank puts atom k top for both, models_agree True, confidence high; a magnitude test proves only integer ranks are summed (raw Score/probability never averaged, F-2); disagreement on the top atom raises the confidence flag (low). Stability and SoM stay two separate quantities; the two ADMET-AI CLint heads are separate labeled low-weight candidates (F-17, never combined); the ADMETlab head is a NEEDS_AARAN placeholder excluded from the derived flag."
+  },
+  "note": "metabolism aggregator: TWO quantities not three votes - whole-molecule stability (qualitative, low-weight) kept separate from per-atom SoM ORDINAL co-rank (rank-sum on atom index; SMARTCyp Score and FAME3R prob never averaged, F-2); confidence = SoM inter-model agreement cross-referenced with stability.",
+  "commit": "task/t42-agg-metabolism"
+}
