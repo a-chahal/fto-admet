@@ -1,0 +1,21 @@
+{
+  "task": "t27-model-swissadme",
+  "kind": "model-code",
+  "status": "pass",
+  "attempts": 1,
+  "artifacts": [
+    "endpoints/lipophilicity/swissadme/pixi.toml",
+    "endpoints/lipophilicity/swissadme/pixi.lock",
+    "endpoints/lipophilicity/swissadme/run.py",
+    "endpoints/lipophilicity/swissadme/README.md",
+    "tests/test_model_swissadme.py"
+  ],
+  "smoke": {
+    "ran": true,
+    "ok": true,
+    "detail": "On the box (rosenbluth): pixi install solved endpoints/lipophilicity/swissadme with PIXI_CACHE_DIR forced under /zfs (nothing in $HOME). pixi.lock is box-solved (linux-64 section, 182 linux-64 refs with sha256 hashes; pure rdkit 2026.03.3 + python 3.11 env, same shape as the t10 rdkit_crippen lens). Direct smoke `pixi run python run.py --input ../../../tests/fixtures/fto43.smi --output /tmp/swissadme.out.json` => reproduced logP lenses WLOGP=0.0909 (RDKit Crippen MolLogP) and MLOGP=-0.3592 (Moriguchi 13-descriptor), Consensus_logP=-0.1342 (mean of the reproduced lenses, direction UP=more lipophilic, log units). XLOGP3 binary is NOT present on the box (no `xlogp3` on PATH, no XLOGP3_BIN), so the adapter degrades cleanly to a 2-lens consensus and records it (raw.lenses_used=[WLOGP,MLOGP], raw.xlogp3_available=false, uncertainty.extra.n_lenses=2); no XLOGP3 value is fabricated. INDIRECT spread-based uncertainty populated in uncertainty.extra (spread_range=0.4501, spread_std=0.3183, lens_values, note); first-class Uncertainty fields left null because mapping spread->calibrated confidence is the DEFERRED AD policy (CLAUDE.md 4a). `pixi run pytest tests/test_model_swissadme.py -m model -q` => 1 passed (validates output against core.schemas.OutputRecord and asserts Consensus == mean of reproduced lenses + spread populated).",
+    "detail_extra": "2-lens (not 3-lens) build: XLOGP3 v3.2.2 is a licensed external CLI, not installed on the box. The XLOGP3 code path is present and inert (picks up XLOGP3_BIN or `xlogp3` on PATH if a binary ever lands, yielding a 3-lens consensus); missing XLOGP3 is explicitly NOT a block per task t27. MLOGP HB (intramolecular H-bond dummy, hand-assigned in the original model) is held at 0 and POL is a documented ring-attached-heteroatom approximation; both noted in the README, cross-checked by the multi-lens spread."
+  },
+  "note": "SwissADME is web-only (no API); its lipophilicity role is reconstructed IN CODE so the bulk loop never hits the website. Consensus = mean of the reproduced open lenses: WLOGP (=RDKit Crippen MolLogP, the t10 lens) + MLOGP (Moriguchi 1992/1994 formula, implemented). XLOGP3 optional (external CLI, absent on box -> clean 2-lens with README noting the reduction; no fabricated value). iLOGP + Silicos-IT dropped (proprietary/defunct). Uncertainty is INDIRECT = spread across lenses (convergence=trust, scatter=lean on measured logD); raw spread in uncertainty.extra, calibrated-confidence policy DEFERRED. These are logP not logD (F-12): logP->logD conversion needs the shared pKa and is done downstream, never here. Access WEB-SUBSTITUTABLE. FTO-43 fixture SMILES is the documented placeholder; smoke asserts finite/plausible lenses + consensus==mean + spread, not a hard value.",
+  "commit": "task/t27-model-swissadme"
+}
