@@ -1,0 +1,18 @@
+{
+  "task": "t46-agg-permeability",
+  "kind": "aggregator",
+  "status": "pass",
+  "attempts": 1,
+  "artifacts": [
+    "endpoints/permeability/__init__.py",
+    "endpoints/permeability/aggregate.py",
+    "endpoints/permeability/test_aggregate.py"
+  ],
+  "smoke": {
+    "ran": true,
+    "ok": true,
+    "detail": "pixi run pytest endpoints/permeability/test_aggregate.py -q => 20 passed. Synthetic generalist + BOILED-Egg records produce a permeability flag and an absorption flag; %F (Bioavailability_Ma) is down-weighted out of the vote and flagged suspect; efflux (Pgp) surfaced apart; no single combined scalar; incompatible scales mapped-then-voted, never averaged."
+  },
+  "note": "permeability aggregator: two separate triage flags (permeability vote over Caco2/PAMPA + absorption vote over HIA_Hou/BOILED-Egg HIA); %F weak/down-weighted, efflux separate axis, no fabricated scalar.",
+  "commit": "task/t46-agg-permeability"
+}
