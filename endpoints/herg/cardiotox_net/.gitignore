@@ -1,0 +1,7 @@
+# The upstream CardioTox repo (code + ~216 MB of trained TF checkpoints) is cloned on first use into
+# vendor/CardioTox at the pinned commit (see run.py::_ensure_vendor + README). Weights are NEVER committed
+# (CLAUDE.md 0: never commit weights/data). The whole vendor tree is fetched on the box, so ignore it all.
+vendor/CardioTox/
+
+# isolated pixi env (the box-solved lock is committed; the env itself is not)
+.pixi/

@@ -1,0 +1,47 @@
+# Isolated LEGACY env for the CardioTox net adapter (t30). ONE ENV PER MODEL (CLAUDE.md 0/3). This is a
+# TensorFlow-era stack: Python 3.8 + TensorFlow 2.3.1 + Keras 2.4.3 + RDKit 2020.03 + Mordred, read
+# verbatim from upstream's environment.yml (Abdulk084/CardioTox). CPU-ONLY: the ensemble is tiny and the
+# old-TF/old-CUDA combination fights the box's modern (575.x) driver, so run.py forces CPU.
+#
+# LANDMINE (t30): the TF version is the pin that matters. CardioTox's base models import the private
+# `tensorflow.python.keras.*` API, which TF >= 2.4 removed (Keras was split out). So TF is pinned to the
+# EXACT 2.3.1 upstream used - a newer TF ImportErrors on `tensorflow.python.keras`. `keras == 2.4.3` is a
+# separate hard requirement: `fv_model.py` does a standalone `import keras` (not tf.keras), and 2.4.3 is
+# the version that pairs with TF 2.3. numpy is pinned < 1.19 (TF 2.3.1's own bound) and h5py to the 2.10
+# series (TF 2.3.1 requires h5py < 2.11) - a wrong h5py breaks checkpoint loading.
+#
+# This file is INTENT only. The exact resolved env is `pixi.lock`, SOLVED ON THE BOX (Linux, conda-forge
+# + pip). macOS/laptop cannot resolve this legacy Linux stack, so `platforms` is linux-64 only and the
+# committed lock carries a real `linux-64` section with package sha256 hashes (the gate checks that to
+# catch a fabricated/laptop-solved lock, CLAUDE.md 0/5).
+#
+# Deliberate, science-neutral substitutions (mirroring the ctoxpred2 t23 template, verified on the box):
+#   - `mordredcommunity` (the maintained fork) supplies the importable `mordred` package the descriptor
+#     base model uses. Upstream's `mordred==1.2.0` is unmaintained; the fork emits the same descriptor
+#     names, so the 995 selected columns in des_file.txt resolve (verified at smoke).
+#   - `openbabel == 3.1.1` supplies `from openbabel import pybel`, which the fingerprint base model's
+#     PyBioMed dependency imports.
+#   - `PyBioMed` (git-only) computes the ECFP2 (1024) + PubChem (881) fingerprints (1905 total) the
+#     fingerprint base model was trained on.
+[workspace]
+name = "cardiotox_net"
+version = "0.1.0"
+description = "CardioTox net hERG blocker probability (deep-learning meta-feature ensemble) adapter for the herg endpoint; legacy TF 2.3.1, CPU"
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+[dependencies]
+python = "3.8.*"
+rdkit = "2020.09.*"        # upstream used 2020.03; a 2020.x rdkit that resolves with numpy < 1.19 on the box
+mordredcommunity = "*"     # maintained mordred fork; provides the `mordred` import for the descriptor model
+openbabel = "3.1.1.*"      # provides `from openbabel import pybel` (PyBioMed dependency)
+numpy = "1.18.*"           # TF 2.3.1's bound (numpy < 1.19); kept for descriptor/pickle compatibility
+pandas = "1.1.*"           # upstream pin (mordred .pandas() output)
+scikit-learn = "0.24.*"    # imports roc_auc_score (base-model metric) + unpickles the descriptor normalizer
+h5py = "2.10.*"            # TF 2.3.1 requires h5py < 2.11 (keras checkpoint loading)
+git = "*"                  # run.py clones the upstream repo (code + weights) once at first use
+
+[pypi-dependencies]
+tensorflow = "==2.3.1"     # LANDMINE pin: base models use tensorflow.python.keras (removed in TF >= 2.4)
+keras = "==2.4.3"          # standalone `import keras` in fv_model.py; pairs with TF 2.3
+PyBioMed = { git = "https://github.com/gadsbyfly/PyBioMed" }
