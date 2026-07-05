@@ -44,4 +44,7 @@ git = "*"                  # run.py clones the upstream repo (code + weights) on
 [pypi-dependencies]
 tensorflow = "==2.3.1"     # LANDMINE pin: base models use tensorflow.python.keras (removed in TF >= 2.4)
 keras = "==2.4.3"          # standalone `import keras` in fv_model.py; pairs with TF 2.3
+# LANDMINE: TF 2.3.1's generated *_pb2.py break against protobuf >= 3.20 ("Descriptors cannot be created
+# directly"). TF 2.3.1 set no protobuf upper bound, so the resolver pulls a 4.x - pin it back to 3.19.
+protobuf = "==3.19.6"
 PyBioMed = { git = "https://github.com/gadsbyfly/PyBioMed" }
