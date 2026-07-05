@@ -1,0 +1,42 @@
+# Isolated env for the pksmart adapter - the FIRST REAL isolated env (t11): a genuine upstream stack with
+# real transitive deps, box-solved. ONE ENV PER MODEL (CLAUDE.md §0/§3). CPU-only, no CUDA, no GPU.
+#
+# This file is INTENT only (channels + deps + the one dependency override, below). The exact resolved env
+# is `pixi.lock`, which is SOLVED ON THE BOX (Linux + conda-forge) and committed (CLAUDE.md §0). macOS
+# cannot resolve the per-model env, so `platforms` is linux-64 only and the lock carries a real `linux-64`
+# section with package hashes (the gate checks it to catch a fabricated/laptop-solved lock).
+#
+# LANDMINE (t11): PKSmart's shipped RF pickles are scikit-learn-version-sensitive. pksmart v3.0.1 pins
+# scikit-learn==1.2.1 and numpy==1.23.5; those pins are the versions that unpickle the models cleanly, so
+# they are pinned here (a wrong sklearn silently fails to unpickle). rdkit is pinned <2024 (pksmart's own
+# bound). Verified on the box: the pickles load and predict_pk_params() returns finite human PK params.
+#
+# LANDMINE (t11): use `mordredcommunity`, NOT upstream `mordred` (unmaintained on modern Python). pksmart
+# hard-pins `mordred==1.2.0` in its wheel metadata, but mordredcommunity provides the same importable
+# `mordred` package under a different distribution name, so the resolver will not treat it as satisfying
+# `mordred==1.2.0`. We drop that transitive pin with a pypi dependency-override carrying an always-false
+# env-marker (`sys_platform == 'never'`), then supply `mordredcommunity` from conda-forge as the real
+# `mordred` provider. This is a packaging substitution only (the exact one this task mandates); no upstream
+# science is touched. The lock therefore contains mordredcommunity and NO upstream mordred wheel.
+[workspace]
+name = "pksmart"
+version = "0.1.0"
+description = "PKSmart human i.v. PK (CL/VDss/t1/2/fu/MRT + fold-error) adapter for the clearance endpoint"
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+[dependencies]
+python = "3.11.*"
+scikit-learn = "1.2.1.*"   # pinned to the version that loads PKSmart's shipped RF pickles
+numpy = "1.23.5.*"         # pksmart's pin; kept for pickle/descriptor compatibility
+pandas = "1.5.2.*"
+rdkit = ">=2023.3.3,<2024" # pksmart's own bound
+mordredcommunity = "*"     # the maintained mordred fork; provides the `mordred` import at runtime
+
+[pypi-dependencies]
+pksmart = "==3.0.1"
+
+[pypi-options]
+# Drop pksmart's `mordred==1.2.0` transitive pin (always-false marker) so mordredcommunity is the sole
+# `mordred` provider. See the LANDMINE note above.
+dependency-overrides = { mordred = { version = "*", env-markers = "sys_platform == 'never'" } }
