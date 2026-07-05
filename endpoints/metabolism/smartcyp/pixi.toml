@@ -1,0 +1,22 @@
+# Isolated env for the smartcyp adapter (t25) - SMARTCyp 3.0 site-of-metabolism (Python 3 + RDKit).
+#
+# STATUS: BLOCKED. This file is env INTENT only; there is intentionally NO committed `pixi.lock` yet, because
+# the authentic SMARTCyp 3.0 Python/RDKit source is currently unobtainable (`smartcyp.sund.ku.dk` returns
+# HTTP 503 on all paths; no PyPI package; the only alternatives are the forbidden legacy Java line or
+# third-party re-implementations with fabricated reactivity energies). See README.md "Why this is BLOCKED".
+# A lock is solved ON THE BOX (CLAUDE.md §0) only after the 3.0 source is vendored under `vendor/`.
+#
+# LANDMINE (CLAUDE.md §4, task): SMARTCyp 3.0 is Python 3 + RDKit and needs NO `openjdk`. Only legacy
+# SMARTCyp 1.x/2.x were Java + CDK. If a JVM (`openjdk`) ever appears in this env, you are wiring the legacy
+# repo - stop. SMARTCyp 3.0 has no official PyPI package, so the 3.0 source is vendored and imported directly;
+# the env itself is just RDKit + Python (exact pins to be read from the 3.0 source once vendored).
+[workspace]
+name = "smartcyp"
+version = "0.1.0"
+description = "SMARTCyp 3.0 per-atom site-of-metabolism (3A4 + 2D6/2C9) adapter for the metabolism endpoint - Python/RDKit, no JVM (BLOCKED: 3.0 source unobtainable)"
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+[dependencies]
+python = "3.11.*"
+rdkit = "*"   # the sole scientific dep of SMARTCyp 3.0; NO openjdk. Pin exactly to the 3.0 source's need once vendored.

@@ -1,0 +1,14 @@
+{
+  "task": "t25-model-smartcyp",
+  "kind": "model",
+  "status": "blocked",
+  "attempts": 3,
+  "artifacts": [
+    "endpoints/metabolism/__init__.py",
+    "endpoints/metabolism/smartcyp/README.md",
+    "endpoints/metabolism/smartcyp/pixi.toml"
+  ],
+  "smoke": {"ran": false, "ok": false, "detail": "No smoke: authentic SMARTCyp 3.0 Python/RDKit source could not be installed on the box (unobtainable), so there is nothing to run. No pixi.lock solved; no fabricated fallback."},
+  "note": "BLOCKED: SMARTCyp 3.0 Python source unobtainable - smartcyp.sund.ku.dk returns HTTP 503 on all paths (confirmed from box + independent net), no PyPI package, no authoritative public source repo. Only alternatives are the forbidden legacy Java line (MDStudio_SMARTCyp ships smartcyp-2.4.2.jar; cdk/smartcyp) or third-party re-implementations with hand-invented reactivity energies. Did not fall back to legacy Java or a fake per the no-fabricate rule (CLAUDE.md §4/§5). Endpoint marker + adapter design + exact block reason recorded.",
+  "commit": "task/t25-model-smartcyp"
+}
