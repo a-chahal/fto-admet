@@ -1,0 +1,10 @@
+{
+  "task": "t06-core-ledger",
+  "kind": "core",
+  "status": "pass",
+  "attempts": 1,
+  "artifacts": ["core/ledger.py", "tests/test_ledger.py"],
+  "smoke": {"ran": true, "ok": true, "detail": "pixi run pytest tests/test_ledger.py -q -> 15 passed in 0.07s"},
+  "note": "Append-only JSONL ledger (append+fsync, no rewrite), deterministic hash_input/hash_env_lock, load() tolerates truncated final line, cache_raw verbatim raw-output cache keyed by (model, input_hash).",
+  "commit": "task/t06-core-ledger"
+}
