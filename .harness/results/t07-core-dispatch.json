@@ -1,0 +1,10 @@
+{
+  "task": "t07-core-dispatch",
+  "kind": "core",
+  "status": "pass",
+  "attempts": 1,
+  "artifacts": ["core/dispatch.py", "tests/test_dispatch.py"],
+  "smoke": {"ran": true, "ok": true, "detail": "pixi run pytest tests/test_dispatch.py -q -> 12 passed; full suite 116 passed"},
+  "note": "run_model validates input, refuses env_manifest=None (SOP), picks+claims GPU in the same invocation (CUDA_VISIBLE_DEVICES + --gpu), shells out pixi run, validates output, appends ok ledger; every failure writes a fail record and raises DispatchError.",
+  "commit": "ff3f8c6"
+}
