@@ -1,0 +1,21 @@
+{
+  "task": "t19-model-lipinski_veber_qed",
+  "kind": "model",
+  "status": "pass",
+  "attempts": 1,
+  "artifacts": [
+    "endpoints/druglikeness/__init__.py",
+    "endpoints/druglikeness/lipinski_veber_qed/run.py",
+    "endpoints/druglikeness/lipinski_veber_qed/pixi.toml",
+    "endpoints/druglikeness/lipinski_veber_qed/pixi.lock",
+    "endpoints/druglikeness/lipinski_veber_qed/README.md",
+    "tests/test_model_lipinski_veber_qed.py"
+  ],
+  "smoke": {
+    "ran": true,
+    "ok": true,
+    "detail": "Box smoke on FTO-43 fixture returned the three fields (Lipinski_violations=0 int, Veber_pass=true bool, QED=0.4299 float in [0,1]) with the six underlying descriptors in raw; rdkit 2026.03.3. tests/test_model_lipinski_veber_qed.py -m model: 3 passed on the box (types/ranges + validation against core.schemas.OutputRecord; aspirin -> 0 violations, Veber pass, QED in (0,1); C30 alkane -> >=1 Ro5 violation, low QED)."
+  },
+  "note": "RDKit drug-likeness context rule (Lipinski Ro5 violation count / Veber pass / QED); CODE-PKG, box-solved lock (linux-64, rdkit 2026.03.3). POINTER only, not a gate.",
+  "commit": "task/t19-model-lipinski_veber_qed"
+}
