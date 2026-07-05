@@ -1,0 +1,16 @@
+{
+  "task": "t38-sop-watanabe_pgp_brain",
+  "kind": "sop",
+  "status": "pass",
+  "attempts": 1,
+  "artifacts": [
+    "endpoints/distribution/watanabe_pgp_brain/README.md"
+  ],
+  "smoke": {
+    "ran": false,
+    "ok": true,
+    "detail": "sop kind: no code/env/smoke. README carries all gate-required sections (URL, INPUTS, OUTPUT FIELDS, LEDGER) plus SELECT and the fixed three-field output shape (pgp_brain_efflux NER class / Kp_uu_brain / fu_brain) with units + direction (efflux direction inverted vs the other two)."
+  },
+  "note": "Web-only DruMAP P-gp brain SOP (organism=human); documents the one-session F-14 batch with t37 (renal) + CLint/Fa; passive/efflux triage read only, real CNS answer is experimental Kp,uu, BBB desirable not a gate; ledger shape matches core.ledger with source=DruMAP + run_by.",
+  "commit": "task/t38-sop-watanabe_pgp_brain"
+}
