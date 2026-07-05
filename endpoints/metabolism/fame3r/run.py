@@ -98,7 +98,7 @@ def _fame3r_version() -> str:
 
 
 def _model_source(mdir: Path) -> str:
-    """The provenance stamp for the loaded artifacts (tutorial-example vs the real MetaQSAR models)."""
+    """The provenance stamp for the loaded artifacts (in-house train.sdf model vs any dropped-in model)."""
     src = mdir / SOURCE_FILE
     if src.exists():
         return src.read_text(encoding="utf-8").strip()
