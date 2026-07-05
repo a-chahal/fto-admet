@@ -1,0 +1,5 @@
+{ "task": "t03-core-schemas", "kind": "core", "status": "pass",
+  "attempts": 1, "artifacts": ["core/schemas.py", "tests/test_schemas.py"],
+  "smoke": {"ran": true, "ok": true, "detail": "pixi run pytest tests/test_schemas.py -q: 29 passed"},
+  "note": "pydantic v2 envelope: InputRecord (rejects empty SMILES, carries deferred F-16 standardization fields), all-optional Uncertainty (OPERA AD/AD_index/Conf_index folded in, native fold-error/aleatoric/epistemic reserved), OutputRecord round-trips with per-atom table in raw; validate_input/validate_output entry points.",
+  "commit": "task/t03-core-schemas" }
