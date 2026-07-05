@@ -1,0 +1,5 @@
+{ "task": "t00b-core-env", "kind": "core", "status": "pass",
+  "attempts": 1, "artifacts": ["pixi.toml", "pyproject.toml", "pixi.lock", "core/__init__.py", "tests/test_env.py", ".gitignore"],
+  "smoke": {"ran": true, "ok": true, "detail": "pixi run pytest tests/test_env.py -q -> 2 passed (toolchain + rdkit import); import core OK under env"},
+  "note": "core env installed; multi-platform lock (osx-arm64 + linux-64) committed; added !pixi.lock exception so the lock is tracked despite *.lock ignore.",
+  "commit": "task/t00b-core-env" }

@@ -3,6 +3,7 @@
 # never commit envs/weights/caches/secrets (repo-wide discipline; see CLAUDE.md §0)
 # transient session logs are not.
 *.lock
+!pixi.lock
 *.pyc
 .env
 .harness/logs/*
