@@ -1,0 +1,18 @@
+{
+  "task": "t28-model-pgp",
+  "kind": "model-code",
+  "status": "pass",
+  "attempts": 1,
+  "artifacts": [
+    "endpoints/distribution/pgp/README.md",
+    "endpoints/distribution/pgp/pgp.py",
+    "tests/test_model_pgp.py"
+  ],
+  "smoke": {
+    "ran": true,
+    "ok": true,
+    "detail": "DERIVED model: no env/lock/box smoke by design. 16 laptop unit tests pass (pixi run pytest tests/test_model_pgp.py -q): helper extracts+normalizes Pgp_Broccatelli from an ADMET-AI OutputRecord and its dict form to an efflux flag in [0,1] (UP=more efflux), direction not inverted, and rejects missing/null/non-numeric/out-of-range/bool as None."
+  },
+  "note": "pgp is DERIVED (no env/lock/run.py): README marked 'DERIVED (no env)' + pgp.py helper + green test. FLAG: core/registry.py builds pgp with has_env=True and Provenance has no derived_from field, diverging from the DERIVED design; that is a core (t04) fix, out of this model task's touch scope, so flagged in the README, not edited here.",
+  "commit": "task/t28-model-pgp"
+}
