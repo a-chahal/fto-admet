@@ -204,7 +204,11 @@ def record_for(rec: dict[str, Any]) -> dict[str, Any]:
             "smiles": smiles,
             "mol_id": mol_id,
             "smiles_r": row.get("smiles_r"),
-            "human": {k: _f(v) for k, v in row.items() if k != "comments" and not k.startswith(("dog_", "monkey_", "rat_"))},
+            "human": {
+                k: _f(v)
+                for k, v in row.items()
+                if k not in ("comments", "smiles_r") and not k.startswith(("dog_", "monkey_", "rat_"))
+            },
             "animal": {k: _f(v) for k, v in row.items() if k.startswith(("dog_", "monkey_", "rat_"))},
             "ad_alert": ad_alert,
         },
