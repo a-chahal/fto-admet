@@ -1,0 +1,5 @@
+{ "task": "t41-agg-solubility", "kind": "aggregator", "status": "pass",
+  "attempts": 1, "artifacts": ["endpoints/solubility/aggregate.py", "endpoints/solubility/test_aggregate.py"],
+  "smoke": {"ran": true, "ok": true, "detail": "pixi run pytest endpoints/solubility/test_aggregate.py -q -> 12 passed"},
+  "note": "Relative solubility rank: SFI primary (negated to harmonize the LOWER=better vs logS HIGHER=better inversion), logS ordinal cross-check (never raw-averaged); wide SFI-vs-generalist rank gap raises discrepancy flag.",
+  "commit": "task/t41-agg-solubility" }
