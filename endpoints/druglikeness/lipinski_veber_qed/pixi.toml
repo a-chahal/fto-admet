@@ -1,0 +1,20 @@
+# Isolated env for the lipinski_veber_qed (drug-likeness context) rule adapter. ONE ENV PER MODEL
+# (CLAUDE.md §0/§3): pure RDKit, no upstream weights, no GPU, no CUDA. The descriptors (MW, HBD, HBA,
+# RotB, TPSA, MolLogP) and QED all ship inside RDKit (rdkit.Chem.Descriptors / Lipinski / Crippen / QED),
+# so rdkit is the only dependency, same intent as the t10 rdkit_crippen / t16 boiled_egg / t17
+# pains_brenk / t18 toxicophores templates.
+#
+# This file is INTENT only (channels + deps). The exact resolved env is `pixi.lock`, which is SOLVED ON
+# THE BOX (Linux + conda-forge) and committed (CLAUDE.md §0). macOS cannot resolve the per-model envs,
+# so `platforms` is linux-64 only and the lock carries a real `linux-64` section (the gate checks it to
+# catch a fabricated/laptop-solved lock).
+[project]
+name = "lipinski_veber_qed"
+version = "0.1.0"
+description = "Drug-likeness context rule (RDKit Lipinski / Veber / QED); serves the druglikeness endpoint"
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+[dependencies]
+python = "3.11.*"
+rdkit = "*"
