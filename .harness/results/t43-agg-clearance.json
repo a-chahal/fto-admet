@@ -1,0 +1,17 @@
+{
+  "task": "t43-agg-clearance",
+  "kind": "aggregator",
+  "status": "pass",
+  "attempts": 1,
+  "artifacts": [
+    "endpoints/clearance/aggregate.py",
+    "endpoints/clearance/test_aggregate.py"
+  ],
+  "smoke": {
+    "ran": true,
+    "ok": true,
+    "detail": "pixi run pytest endpoints/clearance/test_aggregate.py -q -> 14 passed in 0.09s (core env, laptop; no box/GPU)."
+  },
+  "note": "DECOMPOSED clearance aggregator: renal/hepatic/aggregate as three separate labeled reads with distinct unit strings; no code path averages or sums across units (F-3); PKSmart CL is ranking-only and always surfaced with its fold-error; ADMET-AI clearance candidates flagged low-weight (F-17); AD/calibration and Watanabe CLr live-unit (F-14) left DEFERRED.",
+  "commit": "task/t43-agg-clearance"
+}
