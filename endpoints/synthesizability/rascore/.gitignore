@@ -1,0 +1,8 @@
+# The upstream RAscore repo (code + models.zip, ~64 MB of trained models) is cloned on first use into
+# vendor/RAscore at the pinned commit (see run.py::_ensure_vendor + README), and models.zip is unzipped
+# there. Models/weights are NEVER committed (CLAUDE.md 0: never commit weights/data). The whole vendor
+# tree is fetched on the box, so ignore it all.
+vendor/RAscore/
+
+# isolated pixi env (the box-solved lock is committed; the env itself is not)
+.pixi/

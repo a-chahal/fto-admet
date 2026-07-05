@@ -1,0 +1,39 @@
+# Isolated LEGACY env for the RAscore adapter (t31). ONE ENV PER MODEL (CLAUDE.md 0/3). This is a
+# 2021-era stack: Python 3.7 + scikit-learn 0.22.1 + xgboost 1.0.2 + RDKit 2020.09. The pins are NOT a
+# preference: upstream (reymond-group/RAscore, setup.cfg + README "Known Installation Issues") states the
+# shipped pretrained model can ONLY be loaded with these exact versions, "because of the pickling method
+# used to save the model and compatibility issues arising between different versions."
+#
+# LANDMINE (t31): the pins that matter are scikit-learn == 0.22.1 and xgboost == 1.0.2. The default
+# RAscore classifier is a pickled XGBoost sklearn wrapper (models/XGB_chembl_ecfp_counts/model.pkl). A
+# wrong xgboost/sklearn version silently fails to unpickle (or unpickles into an object that predicts
+# garbage), so both are pinned to the EXACT upstream versions.
+#
+# We use the XGB (ECFP-counts) classifier, NOT the TensorFlow/Keras (FCFP-counts) DNN. Two reasons:
+#   1. The XGB path is TF-free (no tensorflow-gpu == 2.5.0 / CUDA to fight the box's modern driver), so
+#      the env resolves cleanly and the "model unpickles on the box" done-criterion is met without the
+#      legacy-TF machinery the sibling hERG models (t30 cardiotox_net) needed.
+#   2. In this pinned upstream commit the DNN loader points at models/DNN_chembl_fcfp_counts/model.tf,
+#      but the shipped archive only contains model.h5 - so the NN default path is broken upstream, while
+#      the XGB default (model.pkl) is present and correct.
+# Both classifiers are RAscore variants trained on the same 200k-ChEMBL AiZynthFinder labels and emit the
+# same P(route findable) in [0, 1]; the XGB variant is the robust, drop-in choice here.
+#
+# This file is INTENT only. The exact resolved env is `pixi.lock`, SOLVED ON THE BOX (Linux, conda-forge).
+# macOS/laptop cannot resolve this legacy Linux stack, so `platforms` is linux-64 only and the committed
+# lock carries a real `linux-64` section with package sha256 hashes (the gate checks that to catch a
+# fabricated/laptop-solved lock, CLAUDE.md 0/5).
+[workspace]
+name = "rascore"
+version = "0.1.0"
+description = "RAscore retrosynthetic-accessibility classifier (XGB/ECFP-counts) adapter for the synthesizability endpoint; legacy 2021 sklearn/xgboost stack"
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+[dependencies]
+python = "3.7.*"
+rdkit = "2020.09.*"          # ECFP6-count fingerprint (Morgan radius 3, counts); upstream used 2020.03
+scikit-learn = "0.22.1.*"    # LANDMINE pin: the XGB model.pkl is an xgboost.sklearn wrapper; unpickles under 0.22.1
+xgboost = "1.0.2.*"          # LANDMINE pin: the pretrained classifier was saved with xgboost 1.0.2
+numpy = "*"                  # resolver picks the py37/sklearn-0.22.1-compatible build (fingerprint vector dtype)
+git = "*"                    # run.py clones the upstream repo (code + models.zip) once at first use
