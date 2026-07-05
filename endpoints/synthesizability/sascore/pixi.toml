@@ -1,0 +1,22 @@
+# Isolated env for the sascore (synthetic-accessibility) rule adapter. ONE ENV PER MODEL
+# (CLAUDE.md §0/§3): pure RDKit, no upstream weights, no GPU, no CUDA. SAscore is computed by the
+# RDKit-Contrib `sascorer.py` (Ertl & Schuffenhauer 2009), which imports only `rdkit` + the stdlib and
+# reads its `fpscores.pkl.gz` fragment table; both Contrib files are VENDORED into `vendor/` (they ship
+# in RDKit's Contrib/SA_Score tree, NOT in the importable `rdkit` package), so rdkit is the only
+# dependency. Same intent as the t10 rdkit_crippen / t18 toxicophores / t19 lipinski_veber_qed templates.
+#
+# This file is INTENT only (channels + deps). The exact resolved env is `pixi.lock`, which is SOLVED ON
+# THE BOX (Linux + conda-forge) and committed (CLAUDE.md §0). macOS cannot resolve the per-model envs,
+# so `platforms` is linux-64 only and the lock carries a real `linux-64` section (the gate checks it to
+# catch a fabricated/laptop-solved lock). The vendored `sascorer.py` + `fpscores.pkl.gz` were taken from
+# this same box-solved RDKit build (version recorded in README.md / provenance).
+[project]
+name = "sascore"
+version = "0.1.0"
+description = "Synthetic-accessibility score (RDKit Contrib SA_Score, Ertl & Schuffenhauer 2009); serves the synthesizability endpoint"
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+[dependencies]
+python = "3.11.*"
+rdkit = "*"
