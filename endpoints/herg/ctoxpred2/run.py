@@ -53,9 +53,10 @@ from typing import Any
 import numpy as np
 
 # Locate the vendored upstream package + its decompressed weights, then put the inner package dir on the
-# path so its flat imports (``from utils import ...`` etc., the layout nutils.py assumes) resolve.
-VENDOR = Path(__file__).resolve().parent / "vendor" / "CToxPred2"
-VENDOR_PKG = VENDOR / "CToxPred2"
+# path so its flat imports (``from utils import ...`` etc., the layout nutils.py assumes) resolve. The
+# vendored inner package's ``.py`` modules live directly under ``vendor/CToxPred2/`` and the decompressed
+# weights under ``vendor/CToxPred2/models/`` (see README "Environment / install").
+VENDOR_PKG = Path(__file__).resolve().parent / "vendor" / "CToxPred2"
 MODELS = VENDOR_PKG / "models"
 if str(VENDOR_PKG) not in sys.path:
     sys.path.insert(0, str(VENDOR_PKG))
