@@ -1,0 +1,18 @@
+# Isolated env for the sfi (Solubility Forecast Index) rule adapter. ONE ENV PER MODEL
+# (CLAUDE.md §0/§3): pure RDKit, no upstream weights, no GPU, no CUDA. Same intent as the t10 rdkit_crippen
+# template (SFI reuses the Crippen cLogP lens) plus rdMolDescriptors for the aromatic-ring count.
+#
+# This file is INTENT only (channels + deps). The exact resolved env is `pixi.lock`, which is SOLVED ON
+# THE BOX (Linux + conda-forge) and committed (CLAUDE.md §0). macOS cannot resolve the per-model envs,
+# so `platforms` is linux-64 only and the lock carries a real `linux-64` section (the gate checks it to
+# catch a fabricated/laptop-solved lock).
+[project]
+name = "sfi"
+version = "0.1.0"
+description = "Solubility Forecast Index (SFI = cLogD(7.4) + #aromatic rings) rule adapter for the solubility endpoint"
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+[dependencies]
+python = "3.11.*"
+rdkit = "*"
