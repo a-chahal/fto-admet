@@ -1,0 +1,28 @@
+# Isolated env for the admet_ai adapter (t21): ADMET-AI v2 = a modern, current stack (Chemprop v2 +
+# torch >= 2.8 + rdkit >= 2025.9). ONE ENV PER MODEL (CLAUDE.md §0/§3). GPU OPTIONAL (requires_gpu=False):
+# the adapter runs on CPU by default and honors --gpu N via CUDA_VISIBLE_DEVICES, so the env carries the
+# CUDA-enabled torch wheel but never requires a device.
+#
+# This file is INTENT only. The exact resolved env is `pixi.lock`, SOLVED ON THE BOX (Linux + CUDA;
+# conda-forge + PyPI) and committed (CLAUDE.md §0). macOS/laptop CANNOT resolve the Linux+CUDA torch
+# wheels, so `platforms` is linux-64 only and the lock carries a real `linux-64` section with package
+# hashes (the gate checks this to catch a fabricated/laptop-solved lock).
+#
+# Intent is deliberately minimal: pin only python + the `admet-ai` PyPI package (v2.0.1 = the Feb 2026
+# release "Fixing models on Linux/CUDA", directly relevant to Rosenbluth). admet-ai's own pyproject then
+# pulls the exact companion stack (chemprop >= 2.2.2, torch >= 2.8, lightning, rdkit >= 2025.9.5, numpy,
+# pandas, seaborn, tqdm, typed-argument-parser). The model weights ship inside the admet-ai wheel, so there
+# is no run-time download. Letting the upstream pyproject drive resolution keeps this faithful to v2 and
+# avoids hand-guessing transitive pins.
+[workspace]
+name = "admet_ai"
+version = "0.1.0"
+description = "ADMET-AI v2 cross-cutting generalist (feeds 10 endpoints) adapter for the triage endpoint"
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+[dependencies]
+python = "3.12.*"
+
+[pypi-dependencies]
+admet-ai = ">=2.0.1"
