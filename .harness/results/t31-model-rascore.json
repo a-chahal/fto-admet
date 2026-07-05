@@ -1,0 +1,21 @@
+{
+  "task": "t31-model-rascore",
+  "kind": "model",
+  "status": "pass",
+  "attempts": 1,
+  "artifacts": [
+    "endpoints/synthesizability/rascore/run.py",
+    "endpoints/synthesizability/rascore/pixi.toml",
+    "endpoints/synthesizability/rascore/pixi.lock",
+    "endpoints/synthesizability/rascore/README.md",
+    "endpoints/synthesizability/rascore/.gitignore",
+    "tests/test_model_rascore.py"
+  ],
+  "smoke": {
+    "ran": true,
+    "ok": true,
+    "detail": "Box smoke on FTO-43 fixture: RAscore=0.9907 (finite, in [0,1]); model.pkl unpickled under the pinned scikit-learn 0.22.1 + xgboost 1.0.2 + rdkit 2020.09.5 stack. pytest tests/test_model_rascore.py -m model -> 1 passed (validates single-object path against core.schemas.OutputRecord)."
+  },
+  "note": "RAscore XGB/ECFP-counts retrosynthetic-accessibility classifier; second rung of the synthesizability ladder; box-solved linux-64 lock (129 sha256 hashes) with pinned 2021 sklearn/xgboost stack.",
+  "commit": "task/t31-model-rascore"
+}
