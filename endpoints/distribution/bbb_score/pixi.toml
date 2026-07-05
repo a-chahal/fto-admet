@@ -1,0 +1,18 @@
+# Isolated env for the bbb_score (BBB Score, Gupta 2019) rule adapter. ONE ENV PER MODEL
+# (CLAUDE.md §0/§3): pure RDKit, no upstream weights, no GPU, no CUDA. Same intent as the t10
+# rdkit_crippen / t13 sfi templates (RDKit descriptors + arithmetic).
+#
+# This file is INTENT only (channels + deps). The exact resolved env is `pixi.lock`, which is SOLVED ON
+# THE BOX (Linux + conda-forge) and committed (CLAUDE.md §0). macOS cannot resolve the per-model envs,
+# so `platforms` is linux-64 only and the lock carries a real `linux-64` section (the gate checks it to
+# catch a fabricated/laptop-solved lock).
+[project]
+name = "bbb_score"
+version = "0.1.0"
+description = "BBB Score (Gupta 2019: P(Aro_R)+P(HA)+1.5 P(MWHBN)+2 P(TPSA)+0.5 P(pKa)) rule adapter for the distribution endpoint"
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+[dependencies]
+python = "3.11.*"
+rdkit = "*"

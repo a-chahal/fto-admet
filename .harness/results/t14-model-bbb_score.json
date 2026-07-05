@@ -1,0 +1,21 @@
+{
+  "task": "t14-model-bbb_score",
+  "kind": "model-rule",
+  "status": "pass",
+  "attempts": 1,
+  "artifacts": [
+    "endpoints/distribution/__init__.py",
+    "endpoints/distribution/bbb_score/pixi.toml",
+    "endpoints/distribution/bbb_score/pixi.lock",
+    "endpoints/distribution/bbb_score/run.py",
+    "endpoints/distribution/bbb_score/README.md",
+    "tests/test_model_bbb_score.py"
+  ],
+  "smoke": {
+    "ran": true,
+    "ok": true,
+    "detail": "On the box (rosenbluth): `pixi install` solved endpoints/distribution/bbb_score with caches forced under /zfs (PIXI_CACHE_DIR=/zfs/sanjanp/fto-admet-envs/pixi-cache; nothing in $HOME, which is 97% full). pixi.lock is box-solved (linux-64 section, 110 sha256 hashes) and pins rdkit 2026.03.3 + python 3.11.15 (same conda-forge stack as t10/t13, cache warm, install 4s). Direct smoke `pixi run --manifest-path pixi.toml python run.py --input <fto43> --output ...`: FTO-43 placeholder (acetic acid CC(=O)O, default PLACEHOLDER_PKA=9.0) => finite BBB_Score=3.73 in [0,6], model==bbb_score, uncertainty==None, raw carries the five descriptors + P_* terms. REFERENCE AGREEMENT (the task's unit-test vs gkxiao/BBB-score): acetaminophen CC(=O)Nc1ccc(O)cc1 --pka 9.89 => BBB_Score=4.43 (reference 4.43, exact); cinnarizine --pka 8.1 => BBB_Score=5.01 (reference 5.01, exact). The reimplemented Gupta 2019 formula reproduces the reference port exactly on both molecules. Lock rsync'd back to the laptop byte-identical (grep linux-64 => 182 lines, sha256 => 110). tests/test_model_bbb_score.py (@pytest.mark.model) drives this same box path (FTO-43 smoke + the two parametrized reference molecules) and validates against core.schemas.OutputRecord; it is the fast-tier-excluded model tier the orchestrator re-runs on the box."
+  },
+  "note": "BBB Score (Gupta et al., J Med Chem 2019, DOI 10.1021/acs.jmedchem.9b01220; AUC 0.86) rule for the distribution/BBB/CNS endpoint, CODE-ALGO, following the t10/t13 folder/adapter shape. BBB_Score = P(Aro_R) + P(HA) + 1.5*P(MWHBN) + 2*P(TPSA) + 0.5*P(pKa) -> single float on 0..6; HIGHER = more likely passive BBB penetrant. Five RDKit descriptors (#aromatic rings, heavy atoms, MWHBN=(nHBA+nHBD)/sqrt(MW), TPSA, most-basic pKa) with the paper's max-normalised desirability transforms; reimplemented from the paper and matched exactly to the gkxiao/BBB-score reference (acetaminophen 4.43, cinnarizine 5.01) so the formula is auditable, not a black box. Landmine honored: PASSIVE filter only, NOT a brain-exposure prediction and NOT a gate (real answer = experimental Kp,uu; reconciled with CNS MPO / BOILED-Egg / BBB_Martins at the distribution aggregator, incompatible scales F-4) - stated in README. pKa is the F-13 DEFERRED shared placeholder (PLACEHOLDER_PKA=9.0, the SAME value/source as t13 SFI / t15 CNS MPO, NOT diverged per model), wired as an injectable source (--pka) with a TODO(F-13) to swap the single shared pKa source (OPERA pKa_pred / one chosen predictor) once decided. uncertainty=None (deterministic given the pKa). Invalid SMILES -> null BBB_Score + raw.error, no crash. FTO-43 fixture SMILES is the documented t09 placeholder; smoke asserts finite/in-range, and the reference test asserts the reference molecules match within 0.05.",
+  "commit": "task/t14-model-bbb_score"
+}
