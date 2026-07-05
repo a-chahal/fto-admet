@@ -1,0 +1,35 @@
+# Isolated env for the fame3r adapter (t26): FAME3R per-atom site-of-metabolism probability. ONE ENV PER
+# MODEL (CLAUDE.md §0/§3). CPU-only, no CUDA, no GPU.
+#
+# This file is INTENT only (channels + deps). The exact resolved env is `pixi.lock`, SOLVED ON THE BOX
+# (Linux + conda-forge/pypi) and committed (CLAUDE.md §0). macOS cannot resolve the per-model env, so
+# `platforms` is linux-64 only and the lock carries a real `linux-64` section with package hashes (the
+# gate checks it to catch a fabricated/laptop-solved lock).
+#
+# LANDMINE (t26): FAME3R v2.0.0 (molinfo-vienna/FAME3R, J. Cheminform. 2026) is NOT a turnkey CSV writer
+# and ships NO trained model - it is a set of scikit-learn components (`FAME3RVectorizer` +
+# `FAME3RScoreEstimator`) built on the CDPKit (CDPL) toolkit, plus a CLI to train your own model. The
+# per-atom SoM signal is a scikit-learn `RandomForestClassifier.predict_proba(...)[:, 1]`. So this env
+# carries fame3r (which pulls `cdpkit==1.2.3` as a pypi wheel), scikit-learn, and rdkit. rdkit is needed
+# for the documented `atom_to_marked_smiles` helper (RDKit atom -> atom-mapped SMILES) that feeds the
+# vectorizer's `input="smiles"` mode; CDPKit does the internal descriptor generation.
+#
+# fame3r requires python>=3.11, numpy>=2.3.2, scikit-learn>=1.5.1, joblib>=1.4.2 (from its wheel
+# metadata). Those are pinned as conda-forge deps so rdkit and fame3r share one numpy; fame3r then only
+# pulls the pypi-only `cdpkit` wheel.
+[workspace]
+name = "fame3r"
+version = "0.1.0"
+description = "FAME3R per-atom site-of-metabolism probability (predict_proba[:,1]) + FAME3RScore AD adapter (metabolism endpoint)"
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+[dependencies]
+python = "3.11.*"
+scikit-learn = ">=1.5.1"   # fame3r's floor; RandomForestClassifier + make_pipeline + predict_proba
+numpy = ">=2.3.2"          # fame3r's floor
+joblib = ">=1.4.2"         # fame3r's floor; model (de)serialization
+rdkit = "*"                # atom_to_marked_smiles: RDKit atom -> atom-mapped SMILES for input="smiles"
+
+[pypi-dependencies]
+fame3r = "==2.0.0"         # pulls cdpkit==1.2.3 (CDPL toolkit; pypi-only) as the sole extra dep
