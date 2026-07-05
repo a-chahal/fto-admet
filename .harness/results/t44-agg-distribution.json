@@ -1,0 +1,17 @@
+{
+  "task": "t44-agg-distribution",
+  "kind": "aggregator",
+  "status": "pass",
+  "attempts": 1,
+  "artifacts": [
+    "endpoints/distribution/aggregate.py",
+    "endpoints/distribution/test_aggregate.py"
+  ],
+  "smoke": {
+    "ran": true,
+    "ok": true,
+    "detail": "pixi run pytest endpoints/distribution/test_aggregate.py -q -> 18 passed. Each incompatible-scale passive signal (0-6 / probability / bool) maps to a categorical flag then votes; passive and efflux come out as separate fields; no cross-scale averaging."
+  },
+  "note": "distribution aggregator: passive-penetration vote SEPARATE from efflux vote (F-4); incompatible scales mapped-then-voted, never averaged; Kp,uu surfaced apart; calibrated gate policy DEFERRED.",
+  "commit": "task/t44-agg-distribution"
+}
