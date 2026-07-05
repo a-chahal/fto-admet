@@ -1,0 +1,30 @@
+{
+  "task": "t23-model-ctoxpred2",
+  "kind": "model-code",
+  "status": "pass",
+  "attempts": 1,
+  "artifacts": [
+    "endpoints/herg/__init__.py",
+    "endpoints/herg/ctoxpred2/run.py",
+    "endpoints/herg/ctoxpred2/pixi.toml",
+    "endpoints/herg/ctoxpred2/pixi.lock",
+    "endpoints/herg/ctoxpred2/README.md",
+    "endpoints/herg/ctoxpred2/.gitignore",
+    "endpoints/herg/ctoxpred2/vendor/CToxPred2/utils.py",
+    "endpoints/herg/ctoxpred2/vendor/CToxPred2/pairwise_correlation.py",
+    "endpoints/herg/ctoxpred2/vendor/CToxPred2/hERG_model.py",
+    "endpoints/herg/ctoxpred2/vendor/CToxPred2/nav15_model.py",
+    "endpoints/herg/ctoxpred2/vendor/CToxPred2/cav12_model.py",
+    "endpoints/herg/ctoxpred2/vendor/CToxPred2/architecture_framework.py",
+    "endpoints/herg/ctoxpred2/vendor/CToxPred2/__init__.py",
+    "endpoints/herg/ctoxpred2/vendor/CToxPred2/LICENSE",
+    "tests/test_model_ctoxpred2.py"
+  ],
+  "smoke": {
+    "ran": true,
+    "ok": true,
+    "detail": "Box smoke (linux-64; py3.9, torch 1.12.1 cpu, scikit-learn 1.3.1, mordredcommunity 2.0.7, openbabel 3.1.1, PyBioMed git) on the FTO-43 fixture returned three 0/1 votes (hERG_vote=0, NaV1.5_vote=0, CaV1.2_vote=1) and three confidences PARSED from upstream '{:.1%}' strings to floats (hERG 0.998 in uncertainty.confidence; nav15 1.0, cav12 0.977 in extra; the verbatim '99.8%'/'100.0%'/'97.7%' export strings kept in raw). Verified two ways: (1) `pixi run --manifest-path pixi.toml python run.py` in the isolated env; (2) `pixi run pytest tests/test_model_ctoxpred2.py -q` in the core env -> 1 passed, output validated against core.schemas.OutputRecord. Re-verified from a pristine `git clone` of the branch with `pixi install --locked` (lock consistent, exit 0)."
+  },
+  "note": "CToxPred2 DNN (dl-sl, MC-dropout) multichannel cardiac secondary (in_bulk_loop=False): hERG channel feeds the gate as a confidence-weighted VOTE (LANDMINE: 0/1 argmax vote not a probability; confidence is a %-string parsed to float), NaV1.5/CaV1.2 context. Upstream code vendored unmodified; .rar weights decompressed on the box via `pixi exec --spec unrar` (gitignored). Chose DNN over RF (torch state-dicts robust vs sklearn-pinned joblib pickles); dropped torch-geometric/MolVS (GUI/GCN/image only). Access CODE-PKG, license MIT.",
+  "commit": "task/t23-model-ctoxpred2"
+}
