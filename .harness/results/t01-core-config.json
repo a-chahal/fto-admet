@@ -1,0 +1,19 @@
+{
+  "task": "t01-core-config",
+  "kind": "core",
+  "status": "pass",
+  "attempts": 1,
+  "artifacts": [
+    "core/config.py",
+    "core/__init__.py",
+    "tests/test_config.py",
+    ".env.example"
+  ],
+  "smoke": {
+    "ran": true,
+    "ok": true,
+    "detail": "pixi run pytest tests/test_config.py -q -> 12 passed in 0.28s"
+  },
+  "note": "core/config.py resolves root/env_cache/ledger/locks/outputs from env or repo .env; missing var raises named ConfigError; write dirs created (refuses $HOME).",
+  "commit": "task/t01-core-config"
+}

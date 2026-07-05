@@ -1,6 +1,15 @@
 """fto-admet-core: the cross-cutting package (registry / dispatch / schemas / ledger / gpu / run).
 
-Placeholder so the editable install (`fto-admet-core = { path = ".", editable = true }`) has a package
-to point at. Later core tasks (t01+) fill in the real modules; this only needs to make `import core`
-resolve under the freshly installed env.
+Later core tasks fill in the rest of the modules (models / registry / schemas / gpu / dispatch /
+run / ledger). `config` is the first and underpins the others: it resolves every machine path.
 """
+
+from core.config import Config, ConfigError, get_config, load_config, reset_config_cache
+
+__all__ = [
+    "Config",
+    "ConfigError",
+    "get_config",
+    "load_config",
+    "reset_config_cache",
+]
