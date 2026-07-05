@@ -1,0 +1,17 @@
+{
+  "task": "t50-agg-druglikeness",
+  "kind": "aggregator",
+  "status": "pass",
+  "attempts": 1,
+  "artifacts": [
+    "endpoints/druglikeness/aggregate.py",
+    "endpoints/druglikeness/test_aggregate.py"
+  ],
+  "smoke": {
+    "ran": true,
+    "ok": true,
+    "detail": "pixi run pytest endpoints/druglikeness/test_aggregate.py -q -> 10 passed in 0.07s (core env, no box/GPU)."
+  },
+  "note": "druglikeness aggregator surfaces Lipinski_violations/Veber_pass/QED as-is; context flags only, no gate/threshold/verdict.",
+  "commit": "task/t50-agg-druglikeness"
+}
