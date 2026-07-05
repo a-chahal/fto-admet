@@ -1,0 +1,19 @@
+{
+  "task": "t34-model-pbpk",
+  "kind": "model-heavy",
+  "status": "needs_aaran",
+  "attempts": 1,
+  "artifacts": [
+    "endpoints/clearance/pbpk/run.py",
+    "endpoints/clearance/pbpk/README.md",
+    "endpoints/clearance/pbpk/pbpk.R",
+    "tests/test_model_pbpk.py"
+  ],
+  "smoke": {
+    "ran": true,
+    "ok": true,
+    "detail": "Transcription-helper unit tests green on laptop (9 passed; full fast tier 193 passed, 38 model-marked deselected). build_record turns a format-faithful synthetic ospsuite metrics extraction into a valid OutputRecord (numeric metrics -> endpoint_values; units + upstream parameterization + simulation metadata cached in raw; NaN/None metric -> null; bare-number and {value,unit} metrics both parse; uncertainty None unless a modeler block is supplied - no fabricated sigma; provenance marks it out-of-band integrator, in_bulk_loop=False). Uniform CLI object-in/object-out and array-in/array-out both exercised. No real PBPK simulation: PBPK is an INTEGRATOR, not a SMILES->number predictor, and the OSP runtime is out-of-band. Box check confirmed R/Rscript/dotnet/ospsuite and the pbpk env dir are all absent on Rosenbluth."
+  },
+  "note": "Transcription helper + SOP README (R 4.x/.NET 8/OSP install recipe, parameterization mapping, transcribed-metrics table) + pbpk.R ospsuite scaffold done. No pixi env (env_manifest=None, out-of-band; integrator, shortlist only). R/.NET/OSP stack not installed on the box -> needs_aaran (POINTER expected to trail its feeder endpoints, not blocked).",
+  "commit": "task/t34-model-pbpk"
+}
