@@ -1,0 +1,21 @@
+{
+  "task": "t26-model-fame3r",
+  "kind": "model-code",
+  "status": "needs_aaran",
+  "attempts": 1,
+  "artifacts": [
+    "endpoints/metabolism/fame3r/run.py",
+    "endpoints/metabolism/fame3r/pixi.toml",
+    "endpoints/metabolism/fame3r/pixi.lock",
+    "endpoints/metabolism/fame3r/README.md",
+    "endpoints/metabolism/fame3r/build_example_model.py",
+    "tests/test_model_fame3r.py"
+  ],
+  "smoke": {
+    "ran": true,
+    "ok": true,
+    "detail": "Box smoke (linux-64; py3.11, fame3r 2.0.0, cdpkit 1.2.3 manylinux wheel, scikit-learn, numpy, rdkit) on the FTO-43 fixture. Adapter marks each RDKit atom via atom_to_marked_smiles, feeds FAME3RVectorizer(input='smiles', radius=5), and emits raw RandomForestClassifier.predict_proba[:,1] per-atom SoM probability with the RDKit atom index attached in raw.atoms (fixture placeholder CC(=O)O -> 4 atoms: idx0 C 0.308, idx1 C 0.68, idx2 O 0.024, idx3 O 0.364), plus FAME3RScore in uncertainty (ad_index + per-atom list + mean). NO 0.3 threshold / no binary column emitted (landmine); direction UP=SoM recorded (opposite SMARTCyp). Verified from the pushed branch checked out in the box repo: (1) `pixi install` off the committed lock, exit 0; (2) build_example_model.py trained the upstream tutorial-example model (41712 atoms / 3166 SOMs from the shipped metatrans_autoannotated_cleaned/train.sdf) into data/models (gitignored weights); (3) `pixi run pytest tests/test_model_fame3r.py -m model -q` in the core env -> 1 passed (34.8s), output validated against core.schemas.OutputRecord. Smoke ran against the EXAMPLE model, not the MetaQSAR paper model (see status)."
+  },
+  "note": "FAME3R v2.0.0 (molinfo-vienna/FAME3R, J.Cheminform 2026) ships sklearn COMPONENTS only (FAME3RVectorizer + FAME3RScoreEstimator, CDPKit-based) and NO trained model. Adapter, isolated pixi env, box-solved linux-64 lock, README, and per-atom smoke are all DONE and verified. status=needs_aaran because the production paper-grade models are a GATED artifact the headless session cannot fetch: Zenodo DOI 10.5281/zenodo.17223468 is RESTRICTED ACCESS (owner must approve a per-user request) and the MetaQSAR-derived models additionally require a commercial license from the Universita degli Studi di Milano (per nerdd.yml / NERDD). To finish: Aaran requests Zenodo access (+ clears UniMi terms), downloads a subset's random_forest_classifier.joblib + fame3r_score_estimator.joblib into endpoints/metabolism/fame3r/data/models/ (or FAME3R_MODELS_DIR), updates model_source.txt, and re-runs the smoke - a drop-in artifact swap, no code change (run.py loads the bare estimators in the CLI/Zenodo layout). Meanwhile the smoke is proven against the upstream tutorial-example model (built by build_example_model.py; upstream calls it 'not expected to be useful for real metabolism prediction'), clearly stamped in provenance.model_source so no output claims to be the MetaQSAR model. Landmines honored: raw predict_proba[:,1], NO hard-coded 0.3 threshold (that was legacy Java FAME 3), direction UP=SoM (opposite SMARTCyp; t42 co-ranks ordinally, F-2), reliability=FAME3RScore not Shannon entropy, RDKit atom indices attached (no shipped atom_id). Access CODE-PKG (code MIT); trained MetaQSAR models CC-BY-NC-4.0 (non-commercial; commercial needs UniMi license).",
+  "commit": "task/t26-model-fame3r"
+}
