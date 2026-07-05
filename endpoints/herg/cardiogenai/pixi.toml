@@ -1,0 +1,36 @@
+# Isolated env for the cardiogenai adapter (t24) - the discriminative cardiac ion-channel model
+# (hERG / NaV1.5 / CaV1.2 pIC50). ONE ENV PER MODEL (CLAUDE.md §0/§3). GPU-capable (the adapter honors
+# `--gpu N`); the DNN is small enough that the smoke also runs on CPU.
+#
+# This file is INTENT only (channels + deps + pins). The exact resolved env is `pixi.lock`, which is
+# SOLVED ON THE BOX (Linux + conda-forge) and committed (CLAUDE.md §0). macOS cannot resolve the per-model
+# env (CUDA wheels), so `platforms` is linux-64 only and the lock carries a real `linux-64` section with
+# package hashes (the gate checks it to catch a fabricated/laptop-solved lock).
+#
+# Only the DISCRIMINATIVE prediction path is exercised (`src.Discriminator.predict_cardiac_ion_channel_activity`
+# -> `src.Transformer`, `src.utils`). Its deps: torch + torch_geometric (GAT graph net), openbabel (pybel
+# graph featurizer), rdkit (fingerprints + ADMET descriptors), pandas/scipy/scikit-learn/numpy, h5py
+# (imported at module top for the .h5 dataset path), matplotlib (imported at module top), tqdm. The
+# generative path is a scaffold-only stub (GATED) and needs no extra deps.
+[workspace]
+name = "cardiogenai"
+version = "0.1.0"
+description = "CardioGenAI discriminative hERG/NaV1.5/CaV1.2 pIC50 adapter for the herg endpoint (generative path GATED, scaffold-only)"
+channels = ["conda-forge"]
+# GPU-capable: the `cuda = "12"` virtual package on the platform pulls the CUDA build of pytorch
+# (verified on the box: pytorch-2.1.2-cuda120, torch.cuda.is_available() == True).
+platforms = [{ platform = "linux-64", cuda = "12" }]
+
+[dependencies]
+python = "3.11.*"
+rdkit = "*"
+openbabel = "3.1.1.*"       # provides `from openbabel import openbabel, pybel` (graph featurizer + bonds)
+pytorch = "2.1.*"
+pytorch_geometric = "*"     # `torch_geometric` (Data/Batch/DataListLoader, GATConv, global_add_pool)
+numpy = "*"
+scipy = "*"
+scikit-learn = "*"
+pandas = "*"
+h5py = "*"                  # imported at the top of src/Discriminator.py (the .h5 dataset input path)
+matplotlib-base = "*"       # imported at the top of src/Discriminator.py
+tqdm = "*"

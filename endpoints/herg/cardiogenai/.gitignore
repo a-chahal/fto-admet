@@ -1,0 +1,7 @@
+# CardioGenAI's model weights + its 746M transformer-vocabulary CSV are NOT committed (CLAUDE.md §0:
+# never commit weights/data). They are fetched on the box at install time (see README "Environment /
+# install"): the discriminative + bidirectional-transformer .pt weights are copied from the upstream
+# GitHub repo, and prepared_transformer_data.csv is downloaded from the upstream Google Drive link.
+# Only the vendored upstream *code* (vendor/CardioGenAI/src/*.py + LICENSE) is committed.
+vendor/CardioGenAI/model_parameters/
+vendor/CardioGenAI/data/
