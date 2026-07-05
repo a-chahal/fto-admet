@@ -1,0 +1,20 @@
+# Isolated env for the toxicophores (toxicity structural-alert) rule adapter. ONE ENV PER MODEL
+# (CLAUDE.md §0/§3): pure RDKit, no upstream weights, no GPU, no CUDA. The alert SMARTS ship inside
+# RDKit's built-in FilterCatalog (the BRENK catalog, chosen and documented as the single toxicity
+# alert source in README.md), so rdkit is the only dependency, same intent as the t10 rdkit_crippen /
+# t16 boiled_egg / t17 pains_brenk templates.
+#
+# This file is INTENT only (channels + deps). The exact resolved env is `pixi.lock`, which is SOLVED ON
+# THE BOX (Linux + conda-forge) and committed (CLAUDE.md §0). macOS cannot resolve the per-model envs,
+# so `platforms` is linux-64 only and the lock carries a real `linux-64` section (the gate checks it to
+# catch a fabricated/laptop-solved lock).
+[project]
+name = "toxicophores"
+version = "0.1.0"
+description = "Toxicity structural-alert screen (RDKit FilterCatalog, BRENK); serves the toxicity endpoint"
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+[dependencies]
+python = "3.11.*"
+rdkit = "*"
