@@ -1,0 +1,17 @@
+name: BayeshERG
+channels:
+  - pytorch
+  - dglteam
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.6
+  - rdkit=2021.03.5
+  - cudatoolkit=10.2
+  - tqdm=4.38.0
+  - dgl-cuda10.2=0.4.3
+  - requests=2.25.1
+  - mdtraj=1.9.4
+  - pytorch=1.6.0
+  - dataclasses=0.8
+prefix: /cellar/users/hyk042/miniconda3/envs/BayeshERG

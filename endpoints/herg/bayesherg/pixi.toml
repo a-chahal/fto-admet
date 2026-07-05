@@ -1,0 +1,43 @@
+# Isolated LEGACY env for the BayeshERG adapter (t29). ONE ENV PER MODEL (CLAUDE.md 0/3). This is the
+# oldest stack in the funnel: Python 3.6 + PyTorch 1.6.0 + DGL 0.4.3 + RDKit 2021.03.5, taken verbatim
+# from upstream's environment.yml (vendor/BayeshERG/environment.yml). The py3.6 + DGL + old-torch combo
+# is a KNOWN-PAINFUL match against the box's modern 575.x CUDA driver (Provenance VERIFIED B#4 flag 7a),
+# so this env is pinned CPU-ONLY: `cpuonly` (pytorch channel mutex) forces the CPU torch build and the
+# CPU `dgl` build is requested (NOT `dgl-cuda10.2`). BayeshERG on CPU is acceptable for the shortlist
+# (task t29 done-criteria); requires_gpu=True in the registry but run.py honors the CPU fallback and it
+# is in fact the default here.
+#
+# This file is INTENT only. The exact resolved env is `pixi.lock`, SOLVED ON THE BOX (Linux, conda-forge
+# + pytorch + dglteam). macOS/laptop cannot resolve this legacy Linux stack, so `platforms` is linux-64
+# only and the committed lock carries a real `linux-64` section with package sha256 hashes (the gate
+# checks that to catch a fabricated/laptop-solved lock, CLAUDE.md 0/5).
+#
+# dgl 0.4.x exposes the `dgl.data.chem` featurizers (CanonicalAtomFeaturizer / smiles_to_bigraph) that
+# both upstream main.py and our run.py use; those were removed in dgl >= 0.5, so 0.4.3 is a hard pin, not
+# a floor. `dataclasses` is the py3.6 stdlib backport (upstream lists it). tqdm/requests match upstream.
+[workspace]
+name = "bayesherg"
+version = "0.1.0"
+description = "BayeshERG hERG blocker probability + aleatoric/epistemic uncertainty adapter (herg endpoint; legacy py3.6/DGL, CPU)"
+channels = ["pytorch", "dglteam", "conda-forge"]
+platforms = ["linux-64"]
+
+[dependencies]
+python = "3.6.*"
+# CPU build pinned by a build-string glob (the `cpuonly` mutex did NOT constrain the cuda build on this
+# legacy stack, so we select the cpu build directly). The legacy CUDA build fights the box's 575.x driver.
+pytorch = { version = "1.6.0.*", build = "*cpu*" }
+# torch 1.6.0 was built against MKL 2020; a newer MKL (2024) drops the `iJIT_IsProfilingActive` ittnotify
+# symbol that libtorch_cpu.so needs, so mkl is hard-pinned to the 2020 series (a wrong mkl ImportErrors).
+mkl = "2020.*"
+dgl = "0.4.3.*"           # CPU build (NOT dgl-cuda10.2); provides dgl.data.chem featurizers (gone in >=0.5)
+rdkit = "2021.03.5.*"     # upstream pin
+requests = "2.25.1.*"     # run.py fetches the CC-BY-NC weights once at first use
+# REQUIRED (not optional): dgl 0.4.3's mol_to_graph.py imports `mdtraj` and `rdkit.Chem` in the SAME
+# `try: ... except ImportError` block, so if mdtraj is absent the ImportError is swallowed and `Chem`
+# never binds -> `smiles_to_bigraph` dies with `NameError: name 'Chem' is not defined`. Upstream's
+# environment.yml pins mdtraj=1.9.4 for exactly this reason; keep it.
+mdtraj = "1.9.*"
+tqdm = "4.38.0.*"         # upstream pin (used by main.py; harmless here)
+dataclasses = "*"         # py3.6 stdlib backport (upstream environment.yml)
+numpy = "*"               # direct import in run.py (_predict) + dgl/torch dep

@@ -1,0 +1,23 @@
+{
+  "task": "t29-model-bayesherg",
+  "kind": "model-legacy",
+  "status": "pass",
+  "attempts": 1,
+  "artifacts": [
+    "endpoints/herg/bayesherg/pixi.toml",
+    "endpoints/herg/bayesherg/pixi.lock",
+    "endpoints/herg/bayesherg/run.py",
+    "endpoints/herg/bayesherg/README.md",
+    "endpoints/herg/bayesherg/.gitignore",
+    "endpoints/herg/bayesherg/vendor/BayeshERG/",
+    "tests/test_model_bayesherg.py"
+  ],
+  "smoke": {
+    "ran": true,
+    "ok": true,
+    "detail": "On the box (rosenbluth): the LEGACY py3.6 stack RESOLVED CPU-only (the blocked-expected env solved). `pixi install --manifest-path pixi.toml` (detached tmux, polled; caches forced under /zfs: PIXI_CACHE_DIR/PIP_CACHE_DIR/HF_HOME/TMPDIR/UV_CACHE_DIR = /zfs/sanjanp/fto-admet-envs, nothing in $HOME which is 98% full). pixi.lock is box-solved (226 linux-64 refs with sha256 hashes, NO osx section) carrying python-3.6.15, pytorch-1.6.0-py3.6_cpu_0 (CPU build), dgl-0.4.3post2-py36 (CPU, NOT dgl-cuda10.2), rdkit-2021.03.5-py36, mkl-2020.4, mdtraj-1.9.6. THREE env landmines were solved on the box, not guessed: (1) the `cpuonly` mutex did NOT constrain the cuda build, so the CPU torch build is pinned by a build-string glob `*cpu*`; (2) a modern mkl (2024.2) ImportErrored torch (`undefined symbol: iJIT_IsProfilingActive`), fixed by pinning `mkl=2020.*` (torch 1.6.0 was built against MKL 2020); (3) dgl 0.4.3's mol_to_graph.py imports `mdtraj` and `rdkit.Chem` in the SAME try/except-ImportError block, so a missing mdtraj swallowed the error and left `Chem` unbound (`NameError: name 'Chem' is not defined` from smiles_to_bigraph), fixed by adding upstream's `mdtraj=1.9.*` pin. Also: run.py was rewritten py3.6-clean (no `from __future__ import annotations` / PEP 585 `list[...]` / PEP 604 `X | None` - none exist on 3.6; uses typing aliases + comment-style hints) because the adapter runs INSIDE the py3.6 env. Direct smoke `pixi run --manifest-path pixi.toml python run.py --input ../../../tests/fixtures/fto43.smi --output /tmp/bayesherg.out.json` => EXIT 0, single OutputRecord with endpoint_values.P_block=4.28e-05 (probability in [0,1], direction UP=more blocker; acetic-acid placeholder scores as a clear non-blocker), and the reserved aleatoric/epistemic split populated (uncertainty.aleatoric=4.28e-05, uncertainty.epistemic=1.14e-08, both finite >=0; extra.mc_samples=30). MC-dropout seeded (MC_SEED=0) for a reproducible ledger value; concrete-dropout stays stochastic under eval() so the Bayesian split is real. Non-destructive feature read (bg.ndata['h'], no .pop) handles the single-molecule dgl-0.4 batch landmine. `pixi run pytest tests/test_model_bayesherg.py -m model -q` (core env shells into the model env like core.dispatch) => 1 passed; it validates the output against core.schemas.OutputRecord (model=='bayesherg', P_block finite in [0,1], aleatoric/epistemic populated non-negative).",
+    "detail_extra": "Vendored upstream (GIST-CSBL/BayeshERG @ 25e9466) as PLAIN files (de-submoduled: the clone shipped a nested .git gitlink; relocated it out of the tree so main.py + model/BayeshERG_model.py commit as regular files, matching the CardioGenAI sibling). Weights model/model_weights.pth are CC-BY-NC-4.0 + binary => gitignored, NOT committed; run.py fetches them once at runtime from the pinned commit (rsync'd to the box for the offline smoke). data/ and __pycache__ excluded by the root .gitignore."
+  },
+  "note": "BayeshERG hERG adapter (legacy py3.6 + torch 1.6.0 cpu + dgl 0.4.3 + rdkit 2021.03.5) - the oldest env in the funnel, box-solved CPU-only and smoke-passing. Emits P_block (=upstream score, identity into the gate core average, UP=more blocker) plus the native aleatoric/epistemic MC-dropout split into the reserved Uncertainty fields (the hERG split-case adjudicator; hERG gate math itself is DEFERRED t52). Three real legacy landmines solved ON THE BOX (cpu-build glob, mkl=2020, mdtraj for dgl's Chem bind), no fabrication. Dual license recorded: code MIT, weights + any hits CC-BY-NC-4.0. Access CODE-PKG.",
+  "commit": "task/t29-model-bayesherg"
+}

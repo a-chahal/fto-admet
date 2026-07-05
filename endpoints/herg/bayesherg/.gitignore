@@ -1,0 +1,6 @@
+# The trained weights are CC-BY-NC-4.0 (academic/individual use only) AND binary: never committed
+# (CLAUDE.md 0.5). run.py fetches them once at runtime from the pinned upstream commit into this path.
+vendor/BayeshERG/model/model_weights.pth
+
+# isolated pixi env (box-solved lock is committed; the env itself is not)
+.pixi/
