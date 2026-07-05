@@ -1,0 +1,18 @@
+# Canonical fixture input for the FTO-ADMET pipeline lead compound.
+# Compound: FTO-43 (lead; paper "FTO-43 N", also TR-FTO-43 N / TRANA4, vendor "FTO-IN-8").
+#           PubChem CID 164886650, C19H23ClN2O2, MW 346.85, oxetanyl-pyrrolidine series
+#           (docs/FTO_ADMET_Pipeline_Skeleton_SETTLED.md lines 25-26).
+#
+# NEEDS_AARAN: the SMILES on the data line below is a PLACEHOLDER, not the real FTO-43
+# structure. The canonical SMILES for CID 164886650 is a live PubChem lookup that could
+# not be performed in this headless session (network + web-fetch + ChEMBL tools all denied
+# under dontAsk). No-fabricate rule (CLAUDE.md §5): a guessed structure labelled "FTO-43"
+# is a fabrication, so a stand-in is used instead. To finalise: replace the placeholder
+# SMILES with the real canonical SMILES and change the title from "FTO-43-PLACEHOLDER" to
+# "FTO-43". This is a one-line data swap; it touches no code and the whole non-model suite
+# stays green either way. The value only becomes load-bearing for the opt-in
+# @pytest.mark.model smoke tier, which each model task runs against this fixture.
+#
+# Format: one molecule per line, "<SMILES><whitespace><title>"; lines starting with # are
+# comments. Exactly one data line is expected.
+CC(=O)O	FTO-43-PLACEHOLDER
