@@ -1,0 +1,18 @@
+# Isolated env for the cns_mpo (CNS MPO, Wager 2010/2016) rule adapter. ONE ENV PER MODEL
+# (CLAUDE.md §0/§3): pure RDKit, no upstream weights, no GPU, no CUDA. Same intent as the t10
+# rdkit_crippen / t13 sfi / t14 bbb_score templates (RDKit descriptors + arithmetic).
+#
+# This file is INTENT only (channels + deps). The exact resolved env is `pixi.lock`, which is SOLVED ON
+# THE BOX (Linux + conda-forge) and committed (CLAUDE.md §0). macOS cannot resolve the per-model envs,
+# so `platforms` is linux-64 only and the lock carries a real `linux-64` section (the gate checks it to
+# catch a fabricated/laptop-solved lock).
+[project]
+name = "cns_mpo"
+version = "0.1.0"
+description = "CNS MPO (Wager 2010/2016: sum of six physchem desirability transforms) rule adapter for the distribution endpoint"
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+[dependencies]
+python = "3.11.*"
+rdkit = "*"
