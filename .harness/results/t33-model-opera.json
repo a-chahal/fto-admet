@@ -1,0 +1,19 @@
+{
+  "task": "t33-model-opera",
+  "kind": "model-heavy",
+  "status": "needs_aaran",
+  "attempts": 1,
+  "artifacts": [
+    "endpoints/lipophilicity/opera/run.py",
+    "endpoints/lipophilicity/opera/README.md",
+    "endpoints/lipophilicity/opera/fixtures/preds_sample.txt",
+    "tests/test_model_opera.py"
+  ],
+  "smoke": {
+    "ran": true,
+    "ok": true,
+    "detail": "Parser unit tests green on laptop (9 passed, box smoke deselected): parse_preds turns the format-faithful sample preds.txt into 14 valid OutputRecords (2 molecules x 7 endpoints), Conf_index populated as DIRECT uncertainty on every record, AD/AD_index/NaN handled, header-driven parser tolerates a _predRange build. Real box MCR smoke on FTO-43 SKIPPED: OPERA is out-of-band (MATLAB MCR + Java) and the runtime is not installed on the box (no OPERA_HOME/MCR_ROOT, no /opt/MATLAB or /zfs opera install found)."
+  },
+  "note": "Parser + README recipe done; MCR/Java runtime install on the box is the residue -> needs_aaran (not blocked). No pixi env (env_manifest=None, out-of-band); registry already correct.",
+  "commit": "task/t33-model-opera"
+}
