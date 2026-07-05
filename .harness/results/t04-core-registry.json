@@ -1,0 +1,5 @@
+{ "task": "t04-core-registry", "kind": "core", "status": "pass",
+  "attempts": 1, "artifacts": ["core/registry.py", "tests/test_registry.py"],
+  "smoke": {"ran": true, "ok": true, "detail": "pixi run pytest tests/test_registry.py -q: 17 passed"},
+  "note": "ModelSpec + Provenance frozen dataclasses; REGISTRY has exactly 29 specs (one per ModelName), endpoints as frozenset with the 5 cross-cutting sets from IO_SPEC section 2, web-only + OPERA/PBPK carry env_manifest=entrypoint=None, gpu opt collapses to requires_gpu=False, provenance carries only the known access_tag (per-model commit/citation/license land with each model, not fabricated). registry_validate() enforces the invariants for the core gate.",
+  "commit": "task/t04-core-registry" }
