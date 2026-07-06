@@ -168,7 +168,17 @@ def run_endpoint(
         return EndpointResult(endpoint=endpoint, records=records, aggregate=None,
                               failures=failures, note=note)
 
-    aggregate_result = aggregator(records)
+    # Aggregators accept one of two input shapes (an inconsistency across the independently-authored
+    # endpoints): a flat single-molecule ``list[OutputRecord]`` (e.g. lipophilicity), or a batch mapping
+    # ``{mol_id: records}`` (the multi-molecule aggregators, e.g. distribution / clearance / solubility).
+    # run_endpoint screens ONE molecule, so it offers the flat list first and, if that shape is rejected,
+    # retries as a single-entry batch map. (Unifying the two contracts across all aggregators is a
+    # documented follow-up; this keeps the single-molecule composition working for every endpoint today.)
+    try:
+        aggregate_result = aggregator(records)
+    except Exception:
+        mol_id = (input.get("mol_id") if isinstance(input, dict) else getattr(input, "mol_id", None)) or "mol"
+        aggregate_result = aggregator({mol_id: records})
     return EndpointResult(endpoint=endpoint, records=records, aggregate=aggregate_result,
                           failures=failures, note=None)
 
