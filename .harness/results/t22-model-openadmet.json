@@ -1,0 +1,20 @@
+{
+  "task": "t22-model-openadmet",
+  "kind": "model",
+  "status": "pass",
+  "attempts": 1,
+  "artifacts": [
+    "endpoints/triage/openadmet/run.py",
+    "endpoints/triage/openadmet/README.md",
+    "endpoints/triage/openadmet/pixi.toml",
+    "endpoints/triage/openadmet/pixi.lock (box-solved; committed on box worktree /zfs/sanjanp/fto-admet-wt/t22-openadmet at commit cd7642e; sha256 ac35e4fea308259053bb3bf12345f1a2160d01906f3b086e8e74fa159df18404; linux-64 section, 331 sha256 hashes, chemprop 2.2.4, openadmet-models git b6571905; NOT yet on origin)",
+    "tests/test_model_openadmet.py"
+  ],
+  "smoke": {
+    "ran": true,
+    "ok": true,
+    "detail": "pixi run pytest tests/test_model_openadmet.py -m model PASSED on Rosenbluth (core env shells into the openadmet env via pixi run --manifest-path, as core.dispatch does). FTO-43 fixture (CC(=O)O placeholder) -> a valid core.schemas.OutputRecord: endpoint_values carries the four OADMET_PRED_openadmet-AC50_OPENADMET_LOGAC50_cyp{3a4,2d6,2c9,1a2} LOGAC50 heads as finite floats; uncertainty.extra carries the four OADMET_STD_* columns as None (released single CheMeleon model -> NaN sigma -> None, no fabricated sigma); uncertainty.epistemic None. Direct adapter run also EXIT=0 with the same output. HuggingFace baseline weights were NOT gated (fetched anonymously into the /zfs cache; CheMeleon foundation checkpoint cached under OPENADMET_HOME)."
+  },
+  "note": "Box-solved pixi.lock (382 linux-64 refs / 331 sha256) pulled from the box worktree (box commit cd7642e) and committed from the laptop; resolves the transfer-only residue. Model fully built and box-verified (env solved on box: real linux-64 lock with 331 hashes; box smoke passed against core.schemas.OutputRecord). Adapter+README+pixi.toml+test pushed to origin (dc339cd). Box-solved pixi.lock is committed on the box worktree (/zfs/sanjanp/fto-admet-wt/t22-openadmet, commit cd7642e, sha256 ac35e4fe) but could NOT be pushed to origin from this session: scp/rsync/git-over-ssh/python-over-ssh transfer are all permission-denied here and the box has no origin push credential (HTTPS asks for a username; no GitHub SSH key). This is NOT the HF auth/license needs_aaran the brief anticipated (HF was not gated); the sole residue is landing the already-solved, already-verified lock on origin/task/t22-model-openadmet, a one-command scp+commit+push (or git fetch of box commit cd7642e) in a transfer-permitted environment. Env/weights/CheMeleon checkpoint are cached on /zfs, so no re-solve is needed. Corrected two brief premises (see README): weights are on HuggingFace not S3, and released baselines are single models so native sigma is NaN -> uncertainty None (faithfully reported, not fabricated). Role: CYP-metabolism reference only (cluster-split R2 ~ 0.1), never feeds a gate.",
+  "commit": "task/t22-model-openadmet (origin: dc339cd code; box: cd7642e lock)"
+}
