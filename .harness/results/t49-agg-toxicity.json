@@ -1,0 +1,17 @@
+{
+  "task": "t49-agg-toxicity",
+  "kind": "aggregator",
+  "status": "pass",
+  "attempts": 1,
+  "artifacts": [
+    "endpoints/toxicity/aggregate.py",
+    "endpoints/toxicity/test_aggregate.py"
+  ],
+  "smoke": {
+    "ran": true,
+    "ok": true,
+    "detail": "pixi run pytest endpoints/toxicity/test_aggregate.py -q -> 15 passed. Bulk-substitute panel (ADMET-AI DILI/hERG/AMES/Carcinogens_Lagunin/ClinTox/Skin_Reaction as per-endpoint P(toxic), ADMETlab organ-tox heads, toxicophores soft alert) and ProTox confirmatory shortlist (LD50 mg/kg, class 1-6, per-endpoint Active/Inactive+prob) emitted as SEPARATE blocks; asserted no path merges ADMET-AI LD50_Zhu (log 1/(mol/kg), up=toxic) with ProTox LD50 (mg/kg, lower=toxic) - F-5."
+  },
+  "note": "toxicity aggregator: two-tier read kept structurally separate; F-5 LD50_Zhu vs ProTox LD50 non-comparability made machine-checkable; ADMETlab organ-tox head KEYS are documented placeholders (literal CSV column names are NEEDS_AARAN via one live /api/admetCSV call, t35/F-6) - aggregation logic and endpoint labels are final.",
+  "commit": "task/t49-agg-toxicity"
+}
