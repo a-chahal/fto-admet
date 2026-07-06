@@ -1,0 +1,17 @@
+{
+  "task": "t51-agg-triage",
+  "kind": "aggregator",
+  "status": "pass",
+  "attempts": 1,
+  "artifacts": [
+    "endpoints/triage/aggregate.py",
+    "endpoints/triage/test_aggregate.py"
+  ],
+  "smoke": {
+    "ran": true,
+    "ok": true,
+    "detail": "pixi run pytest endpoints/triage/test_aggregate.py -q -> 17 passed in 0.13s (core env, no box/GPU)."
+  },
+  "note": "triage aggregator summarizes ADMET-AI/ADMETlab/OpenADMET into a per-property flag table; uncertainty = cross-model spread; single generalist never authority; FLAGS ONLY, no kills; VDss/half-life stay excluded.",
+  "commit": "task/t51-agg-triage"
+}
