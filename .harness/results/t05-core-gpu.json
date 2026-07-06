@@ -1,5 +1,0 @@
-{ "task": "t05-core-gpu", "kind": "core", "status": "pass",
-  "attempts": 1, "artifacts": ["core/gpu.py", "tests/test_gpu.py"],
-  "smoke": {"ran": true, "ok": true, "detail": "pixi run pytest tests/test_gpu.py -q: 18 passed (fully mocked, no real GPU)"},
-  "note": "core/gpu.py: pure parse_nvidia_smi(text) -> {index: used_MiB}, query_used_mib() shells out fresh (never caches free, per the GPU-0 landmine), FREE_THRESHOLD_MIB=15. Soft locks at config.locks/gpu{N}.lock (pid + ISO UTC ts) via O_EXCL acquire/release + claim() context manager that releases on exception; stale locks (>12h TTL) read as unlocked and are reclaimed, no process is killed. pick_free_gpu() returns lowest index free by nvidia-smi AND unlocked, else None; caller sets CUDA_VISIBLE_DEVICES in the job's own ssh connection. locks dir injectable via config for hermetic tests.",
-  "commit": "task/t05-core-gpu" }
