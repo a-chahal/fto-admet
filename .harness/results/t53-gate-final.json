@@ -1,0 +1,16 @@
+{
+  "task": "t53-gate-final",
+  "kind": "gate",
+  "status": "pass",
+  "attempts": 1,
+  "artifacts": [
+    "tests/test_run.py"
+  ],
+  "smoke": {
+    "ran": true,
+    "ok": true,
+    "detail": "Integration branch integration/final merges all 13 endpoint aggregators + core. pixi run pytest -m 'not model' -> 386 passed, 37 deselected, 0 failed. Fixed 2 core test_run.py fixtures that used herg as the 'unbuilt endpoint' example (now every endpoint ships an aggregator): they simulate the absent-aggregator case at the import/load_aggregator seam instead."
+  },
+  "note": "Final integration gate green across the merged pipeline (13/13 aggregators). Model adapters on their task branches; t34 pbpk + t35 admetlab3 + t36 ochem_ppb remain needs_aaran (external residues); t25 smartcyp blocked by decision; t52 herg is the intended DEFERRED scaffold.",
+  "commit": "integration/final"
+}

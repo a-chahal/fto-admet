@@ -92,7 +92,8 @@ def test_run_endpoint_dispatches_exactly_selected_models(monkeypatch):
 
 # --------------------------------------------------------------------------- missing aggregator
 def test_run_endpoint_missing_aggregator_returns_records_and_note(monkeypatch):
-    # endpoints/ does not exist yet, so load_aggregator naturally returns None (no monkeypatch of it).
+    # Every endpoint now ships an aggregator, so simulate the absent-aggregator case at the seam.
+    monkeypatch.setattr(run, "load_aggregator", lambda ep: None)
     _record_dispatch(monkeypatch)
 
     result = run_endpoint(Endpoint.herg, {"smiles": "c1ccccc1"}, out="/tmp/ignored")
@@ -136,8 +137,10 @@ def test_run_endpoint_records_failures_but_keeps_going(monkeypatch):
 
 
 # --------------------------------------------------------------------------- load_aggregator seam
-def test_load_aggregator_absent_endpoint_is_none():
-    # No endpoints/ package built yet: every endpoint's aggregator resolves to None, never raises.
+def test_load_aggregator_absent_endpoint_is_none(monkeypatch):
+    # An endpoint whose aggregate.py module is absent resolves to None, never raises. Every endpoint now
+    # ships an aggregator, so simulate the absent-module case at the import seam.
+    monkeypatch.setattr("importlib.util.find_spec", lambda name: None)
     assert run.load_aggregator(Endpoint.herg) is None
 
 
