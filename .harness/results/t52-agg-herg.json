@@ -1,0 +1,17 @@
+{
+  "task": "t52-agg-herg",
+  "kind": "aggregator-deferred",
+  "status": "needs_aaran",
+  "attempts": 1,
+  "artifacts": [
+    "endpoints/herg/aggregate.py",
+    "endpoints/herg/test_aggregate.py"
+  ],
+  "smoke": {
+    "ran": true,
+    "ok": true,
+    "detail": "pixi run pytest endpoints/herg/test_aggregate.py -q => 19 passed in the core env (laptop, no box/GPU). Covers harmonization shape (BayeshERG/CardioTox/ADMET-AI identity P_block, BayeshERG carries alea/epis, CardioGenAI 'hERG pIC50' through the placeholder F-1 logistic anchored at pIC50=5.0->0.5), the CToxPred2 vote-not-probability landmine, provisional flag levels, spread caution bias, and the explicit DEFERRED marker."
+  },
+  "note": "hERG gate harmonization layer built + a PROVISIONAL, owner-approved uncalibrated flag (PLACEHOLDER_* block) so the endpoint RUNS; calibrated weighting/thresholds and F-1 pIC50->P(block) mapping remain DEFERRED (needs_aaran).",
+  "commit": "task/t52-agg-herg"
+}
