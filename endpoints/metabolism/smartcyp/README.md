@@ -1,7 +1,10 @@
 # smartcyp - SMARTCyp 3.0 site-of-metabolism (Python/RDKit, no JVM), metabolism endpoint
 
-**STATUS: BLOCKED** (t25). The authentic SMARTCyp 3.0 (Python/RDKit) source could not be obtained on the
-box after honest attempts (see "Why this is BLOCKED" below). No lockfile was solved and no smoke was run:
+**STATUS: BLOCKED** (t25). Re-verified 2026-07-05 per the owner directive to inspect the SMARTCyp engine
+vendored in `MD-Studio/MDStudio_SMARTCyp`: that engine is the **legacy Java 2.4.2 `.jar` run via `java -jar`
+subprocess**, not a Python/RDKit 3.x engine, so it needs the forbidden openjdk/JVM (exact trace below). The
+authentic SMARTCyp 3.0 (Python/RDKit) source still could not be obtained on the box after honest attempts
+(see "Why this is BLOCKED" below). No lockfile was solved and no smoke was run:
 per the no-fabricate rule (CLAUDE.md §5) a green check obtained by vendoring the legacy Java line or a
 third-party re-implementation would be worse than a clean BLOCKED. This README records the exact state, the
 intended design (so finishing is a small step once the source is available), and the precise block reason.
@@ -61,23 +64,40 @@ against yet, so solving an rdkit-only lock would be a partial artifact that cann
 criteria (box-solved lock + passing smoke). The lock is solved on the box only after the 3.0 source is
 vendored (CLAUDE.md §0).
 
-## Why this is BLOCKED (exact error / evidence, 2026-07-04)
+## Why this is BLOCKED (exact error / evidence, re-verified 2026-07-05)
 
-Three honest attempts to obtain the authentic SMARTCyp 3.0 Python/RDKit source, all dead ends:
+Per the owner directive (t25 orchestrator note), the MDStudio_SMARTCyp vendored engine was re-inspected
+directly on the box to settle whether its site-of-metabolism (SoM) computation is pure Python 3 + RDKit
+(SMARTCyp 3.x) or the legacy Java/CDK program. **Finding: it is legacy Java 2.4.2, invoked via a
+subprocess-to-JVM. It is NOT Python/RDKit.** Exact trace (clone of `MD-Studio/MDStudio_SMARTCyp`, HEAD):
 
-1. **MDStudio_SMARTCyp wrapper** (`github.com/MD-Studio/MDStudio_SMARTCyp`, the doc's option (b)): the
-   task requires confirming at build time whether this wrapper is pure-Python. It is **NOT**: its tree
-   contains `mdstudio_smartcyp/bin/smartcyp-2.4.2.jar` and `smartcyp_run.py` shells out to that **Java 2.4.2
-   jar**. That is the **legacy CDK/Java line**, which the SMARTCyp landmine (CLAUDE.md §4; task) explicitly
-   forbids ("If you find yourself adding a JVM, you're reading the legacy repo - stop"). Rejected.
-2. **KU 3.0 Python source** (`smartcyp.sund.ku.dk`, the doc's option (a) and the only authoritative
+- `mdstudio_smartcyp/__init__.py:24` - `__smartcyp_path__ = os.path.join(__package_path__, 'bin/smartcyp-2.4.2.jar')`
+  (the engine is a bundled `.jar`, shipped at `mdstudio_smartcyp/bin/smartcyp-2.4.2.jar`).
+- `mdstudio_smartcyp/__init__.py:25` - `__smartcyp_version__ = '2.4.2'` (the legacy CDK/Java line, **not** 3.0).
+- `mdstudio_smartcyp/smartcyp_run.py:160` - `cmd = ['java', '-jar', __smartcyp_path__, '-printall']`
+  (the SoM run literally builds a `java -jar` command line).
+- `mdstudio_smartcyp/smartcyp_run.py:179` -> `mdstudio_smartcyp/utils.py:87` - `subprocess.Popen(cmd, ...)`
+  executes that JVM command; the Python code only writes a `mol2`, calls out to Java, and parses the CSV.
+- Module docstring (`smartcyp_run.py:7`, `:41`): "Responsible for running the SMARTCyp **Java** code."
+
+There is **no** pure-Python/RDKit SoM computation anywhere in the package: the reactivity/energy science
+lives entirely inside the `smartcyp-2.4.2.jar` and requires a JVM (`java`) at runtime. Required runtime =
+JDK/JRE (openjdk) + the bundled `smartcyp-2.4.2.jar`. Per the orchestrator BRANCH ("IF the vendored
+SMARTCyp requires Java/CDK/openjdk/a JVM: STOP ... do NOT install openjdk ... do NOT fall back to
+FAME3R-only"), and the standing SMARTCyp landmine (CLAUDE.md §4: "If you find yourself adding a JVM, you're
+reading the legacy repo - stop"), this path is rejected and the task is BLOCKED. No `openjdk` was installed;
+no lock was solved; no fallback was substituted.
+
+The two remaining sources for an authentic SMARTCyp **3.0 Python/RDKit** engine were also re-checked and
+remain dead ends:
+1. **KU 3.0 Python source** (`smartcyp.sund.ku.dk`, the doc's option (a) and the only authoritative
    distributor): the host resolves (192.38.114.128) and accepts TCP, but every path returns **HTTP 503
    Service Unavailable** - confirmed from the box AND from an independent network (WebFetch), across `/`,
    `/about`, `/download`, `/static/...`. The legacy host `smartcyp2.sund.ku.dk` is fully unreachable (curl
    000). The Wayback Machine has no archived source/download artifact for the 3.0 site. So the source is
    currently unobtainable, and there is no evidence the 3.0 server ever distributed a downloadable source
    (it is a Flask web/REST service).
-3. **PyPI / public GitHub for an authentic 3.0 source**: no PyPI package named `smartcyp` exists (empty
+2. **PyPI / public GitHub for an authentic 3.0 source**: no PyPI package named `smartcyp` exists (empty
    JSON + empty simple index). GitHub has only: `cdk/smartcyp` (legacy **Java** line, forbidden),
    `MD-Studio/MDStudio_SMARTCyp` (the Java-jar wrapper above), and third-party **re-implementations**
    (`atvijay/smartcyp-application` "SMARTCyp Pro v3.1", `Maxwell1111/Met-ID_SmartCyp_App`
@@ -85,10 +105,12 @@ Three honest attempts to obtain the authentic SMARTCyp 3.0 Python/RDKit source, 
    `("Benzylic_C", 40.0)` table) plus a GNN, NOT the authoritative SMARTCyp DFT reactivity library. Vendoring
    one of those would fabricate the underlying science (no-fabricate rule, CLAUDE.md §5). Rejected.
 
-Blocking error, one line: **SMARTCyp 3.0 Python source unobtainable - `smartcyp.sund.ku.dk` returns HTTP 503
-on all paths (server down), no PyPI package, no authoritative public source repo; the only alternatives are
-the forbidden legacy Java line (MDStudio_SMARTCyp `smartcyp-2.4.2.jar`, `cdk/smartcyp`) or third-party
-re-implementations with fabricated reactivity energies.**
+Blocking error, one line: **The owner-directed source, MDStudio_SMARTCyp, vendors the legacy Java engine
+(`bin/smartcyp-2.4.2.jar`, run via `java -jar` at `smartcyp_run.py:160` -> `subprocess.Popen` at
+`utils.py:87`), NOT a Python/RDKit SoM engine, so it requires the forbidden openjdk/JVM; and the only
+authentic SMARTCyp 3.0 Python source (`smartcyp.sund.ku.dk`) returns HTTP 503 on all paths with no PyPI
+package and no authoritative public source repo - the sole other GitHub hits are the same legacy Java line
+(`cdk/smartcyp`) or third-party re-implementations with fabricated reactivity energies.**
 
 ### To finish (when the KU server is back / source is provided)
 
