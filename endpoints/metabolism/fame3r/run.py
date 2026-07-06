@@ -28,13 +28,15 @@ LANDMINE (CLAUDE.md §4, IO_SPEC §1 #9) - the exact points a plausible guess is
   (2) DIRECTION: higher FAME3R probability = more likely SoM - the OPPOSITE of SMARTCyp, where a lower
       Score/Ranking = more likely SoM. Do not average the two raw scales; co-rank ordinally (t42).
 
-WHERE THE MODEL COMES FROM (needs_aaran boundary): FAME3R ships no trained model. The production,
-paper-grade models are trained on MetaQSAR and are GATED - Zenodo 10.5281/zenodo.17223468 is restricted
-access + the MetaQSAR-derived models need a UniMi commercial license. The build session could not fetch
-them, so the smoke runs against the upstream TUTORIAL EXAMPLE model built by ``build_example_model.py``
-(clearly labeled). run.py loads whatever models dir it is pointed at (FAME3R_MODELS_DIR, else
-``<this dir>/data/models``) and stamps ``model_source`` onto every record, so the real MetaQSAR joblibs
-drop in unchanged and no output ever silently claims to be the paper model.
+WHERE THE MODEL COMES FROM: FAME3R ships no trained model - the repo ships ``train.sdf`` / ``test.sdf``
+precisely so the model is trained in-house. This pipeline's production FAME3R model is a
+``RandomForestClassifier`` trained by ``build_model.py`` on the shipped
+``metatrans_autoannotated_cleaned/train.sdf`` (a MetaTrans-derived, auto-annotated, cleaned SoM set) and
+evaluated on the shipped ``test.sdf`` (metrics in README). This is a legitimately trained FAME3R model on
+the shipped dataset - an honest, documented modeling choice - NOT the gated MetaQSAR models (Zenodo
+10.5281/zenodo.17223468, restricted access + a UniMi commercial license), which this pipeline does not use.
+run.py loads whatever models dir it is pointed at (FAME3R_MODELS_DIR, else ``<this dir>/data/models``) and
+stamps ``model_source`` onto every record, so provenance is never silently misrepresented.
 
 This runs in the model's ISOLATED pixi env (fame3r + cdpkit + rdkit + scikit-learn) and so CANNOT import
 ``core``; it emits plain JSON matching ``core.schemas.OutputRecord`` and the dispatcher validates it on
@@ -58,8 +60,8 @@ MODEL = "fame3r"
 # the same radius (the classifier's feature space is radius-dependent).
 RADIUS = 5
 
-# Trained artifacts (WEIGHTS - gitignored, never committed). Default under this model's data/ dir; the
-# real MetaQSAR models (gated Zenodo download) drop in here or via FAME3R_MODELS_DIR.
+# Trained artifacts (WEIGHTS - gitignored, never committed, rebuilt on the box by build_model.py). Default
+# under this model's data/ dir; an alternate models dir can be pointed at via FAME3R_MODELS_DIR.
 _DEFAULT_MODELS_DIR = Path(__file__).resolve().parent / "data" / "models"
 CLASSIFIER_FILE = "random_forest_classifier.joblib"
 SCORE_FILE = "fame3r_score_estimator.joblib"
@@ -96,7 +98,7 @@ def _fame3r_version() -> str:
 
 
 def _model_source(mdir: Path) -> str:
-    """The provenance stamp for the loaded artifacts (tutorial-example vs the real MetaQSAR models)."""
+    """The provenance stamp for the loaded artifacts (in-house train.sdf model vs any dropped-in model)."""
     src = mdir / SOURCE_FILE
     if src.exists():
         return src.read_text(encoding="utf-8").strip()
@@ -112,8 +114,9 @@ def _provenance(mdir: Path) -> dict[str, Any]:
         "fame3r_version": _fame3r_version(),
         "model_source": _model_source(mdir),
         "citation": "Jacob RA, et al. FAME 3R. J. Cheminform. 2026. doi:10.1186/s13321-026-01161-1",
-        "license": "code: MIT (CODE-PKG). Trained MetaQSAR models: CC-BY-NC-4.0 (non-commercial research; "
-        "for-profit use needs a UniMi commercial license).",
+        "license": "code: MIT (CODE-PKG). In-house model trained on the shipped MetaTrans-derived "
+        "auto-annotated cleaned train.sdf: CC-BY-NC-4.0 (non-commercial research; the dataset inherits the "
+        "FAME3R data license; for-profit use needs the upstream commercial terms).",
         "direction": "higher SoM probability = more likely site of metabolism (OPPOSITE of SMARTCyp)",
     }
 
@@ -137,8 +140,8 @@ class _Predictor:
         score_path = mdir / SCORE_FILE
         if not clf_path.exists():
             raise FileNotFoundError(
-                f"missing trained classifier {clf_path}. FAME3R ships no model; build the tutorial-example "
-                f"model with build_example_model.py or drop the gated MetaQSAR joblibs here (see README)."
+                f"missing trained classifier {clf_path}. FAME3R ships no model; train the in-house model on "
+                f"the box with build_model.py (--train-sdf data/.../train.sdf --out data/models). See README."
             )
         classifier = joblib.load(clf_path)
         self._clf = make_pipeline(FAME3RVectorizer(input="smiles", radius=RADIUS).fit(), classifier)

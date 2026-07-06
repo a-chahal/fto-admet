@@ -7,12 +7,12 @@ validates the output against the real ``core.schemas.OutputRecord``.
 
 Marked ``model`` so it is excluded from the fast tier (``pytest -m 'not model'``) and only runs on the box
 where the model env is installed AND the model artifacts exist under ``endpoints/metabolism/fame3r/data/
-models`` (built by ``build_example_model.py``, or the gated MetaQSAR models dropped in - see README).
+models`` (trained in-house by ``build_model.py`` on the shipped ``train.sdf`` - see README).
 
-The assertions do NOT hard-code SoM probabilities (the FTO-43 fixture SMILES is a documented placeholder,
-and the smoke runs against the upstream tutorial-example model, not the MetaQSAR paper model). They assert
-the CONTRACT: a per-atom SoM-probability table with RDKit atom indices attached, each probability a finite
-0-1 value (direction: UP = more likely SoM), and the FAME3RScore applicability-domain signal populated.
+The assertions do NOT hard-code SoM probabilities (the FTO-43 fixture SMILES is a documented placeholder).
+They assert the CONTRACT: a per-atom SoM-probability table with RDKit atom indices attached, each
+probability a finite 0-1 value (direction: UP = more likely SoM), and the FAME3RScore applicability-domain
+signal populated.
 """
 
 from __future__ import annotations
