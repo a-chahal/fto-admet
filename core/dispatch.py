@@ -33,7 +33,7 @@ from pathlib import Path
 from typing import Any
 
 from core import gpu, ledger
-from core.config import Config, get_config
+from core.config import Config, _parse_dotenv, get_config
 from core.models import ModelName
 from core.registry import REGISTRY, ModelSpec
 from core.schemas import OutputRecord, validate_input, validate_output
@@ -41,6 +41,10 @@ from core.schemas import OutputRecord, validate_input, validate_output
 # The uniform adapter CLI (CLAUDE.md §2): every model's run.py reads --input, writes --output, and
 # optionally honors --gpu. dispatch builds this one command for every model.
 _PIXI = "pixi"
+
+# Repo root, used to find the .env whose machine config (e.g. OPERA_HOME / MCR_ROOT for the out-of-band
+# OPERA runtime) is passed through to model subprocesses.
+_REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 class DispatchError(RuntimeError):
@@ -161,6 +165,10 @@ def run_model(
 
     cmd = build_command(spec, in_path, out_path, gpu_index)
     run_env = dict(os.environ)
+    # Machine config from the repo .env (e.g. OPERA_HOME / MCR_ROOT for the out-of-band OPERA runtime) is
+    # made available to the model subprocess; the real environment always wins over the file.
+    for _k, _v in _parse_dotenv(_REPO_ROOT / ".env").items():
+        run_env.setdefault(_k, _v)
     if gpu_index is not None:
         # Same invocation as the pick (mirrors the one-ssh-connection rule): the env var lives in the
         # subprocess's own process, so no fresh shell can forget it.
