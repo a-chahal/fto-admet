@@ -177,9 +177,12 @@ def test_cli_preds_mode_writes_valid_output(tmp_path: Path) -> None:
     rc = run.main(["--input", str(in_smi), "--output", str(out_path), "--preds", str(SAMPLE)])
     assert rc == 0
     payload = json.loads(out_path.read_text(encoding="utf-8"))
-    assert isinstance(payload, list) and len(payload) == 14
+    # main() merges the per-(molecule, endpoint) records into one record per molecule (the shape dispatch
+    # consumes): the sample has 2 molecules x 7 endpoints -> 2 merged records, each carrying all 7 values.
+    assert isinstance(payload, list) and len(payload) == 2
     for rec in payload:
-        OutputRecord.model_validate(rec)
+        model = OutputRecord.model_validate(rec)
+        assert len(model.endpoint_values) == 7
 
 
 @pytest.mark.model

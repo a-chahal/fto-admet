@@ -1,0 +1,10 @@
+# opera adapter env. run.py is a pure-stdlib parser/wrapper: it shells out to the out-of-band OPERA CLI
+# (run_OPERA.sh under $OPERA_HOME / $MCR_ROOT, installed separately) and parses the resulting csv. so the
+# env needs only python. the MATLAB runtime and OPERA binaries live outside pixi (see README).
+[project]
+name = "opera"
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+[dependencies]
+python = "3.11.*"

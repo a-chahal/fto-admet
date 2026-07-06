@@ -36,11 +36,11 @@ EXPECTED_CROSS_CUTTING = {
 }
 
 # Models that never enter the bulk `pixi run` path -> env_manifest = entrypoint = None.
+# OPERA is wired in: it now ships a python-only env whose run.py shells out to the installed MCR runtime.
 NO_ENV_MODELS = {
     ModelName.watanabe_renal,
     ModelName.watanabe_pgp_brain,
     ModelName.protox,
-    ModelName.opera,
     ModelName.pbpk,
 }
 

@@ -120,7 +120,7 @@ _ROWS: tuple[tuple[ModelName, Endpoint, bool, bool, str, bool], ...] = (
     (ModelName.ochem_ppb, Endpoint.ppb, False, True, "CODE-API", True),
     (ModelName.sfi, Endpoint.solubility, False, True, "CODE-ALGO", True),
     (ModelName.rdkit_crippen, Endpoint.lipophilicity, False, True, "CODE-PKG", True),
-    (ModelName.opera, Endpoint.lipophilicity, False, True, "CODE-STANDALONE", False),
+    (ModelName.opera, Endpoint.lipophilicity, False, True, "CODE-STANDALONE", True),
     (ModelName.swissadme, Endpoint.lipophilicity, False, True, "WEB-SUBSTITUTABLE", True),
     (ModelName.pains_brenk, Endpoint.structural_alerts, False, True, "CODE-PKG", True),
     (ModelName.sascore, Endpoint.synthesizability, False, True, "CODE-PKG", True),

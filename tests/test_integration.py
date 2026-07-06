@@ -54,13 +54,12 @@ EXPECTED_CROSS_CUTTING = {
     ModelName.pgp: {"distribution", "permeability"},
 }
 
-# Models that never enter the bulk `pixi run` path -> env_manifest = entrypoint = None (task step 2:
-# "web-only + OPERA + PBPK have None").
+# Models that never enter the bulk `pixi run` path -> env_manifest = entrypoint = None.
+# OPERA is wired in: it ships a python-only env whose run.py shells out to the installed MCR runtime.
 EXPECTED_NO_ENV = {
     ModelName.watanabe_renal,
     ModelName.watanabe_pgp_brain,
     ModelName.protox,
-    ModelName.opera,
     ModelName.pbpk,
 }
 

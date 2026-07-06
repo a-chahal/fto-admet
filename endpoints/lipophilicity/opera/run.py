@@ -60,6 +60,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import io
 import json
 import os
@@ -297,6 +298,13 @@ def build_opera_command(
     return cmd
 
 
+def _cache_dir() -> Path:
+    """Raw-output cache location for OPERA CSVs. Under ``$FTO_ADMET_ENV_CACHE`` when set."""
+    root = os.environ.get("FTO_ADMET_ENV_CACHE")
+    base = Path(root) if root else Path.home() / ".cache"
+    return base / "opera_cache"
+
+
 def run_opera(
     records: list[dict[str, Any]],
     opera_home: Path,
@@ -304,15 +312,26 @@ def run_opera(
     endpoints: tuple[str, ...],
     workdir: Path,
 ) -> str:
-    """Run the out-of-band OPERA CLI and return the raw ``preds.txt`` text. Requires the MCR runtime.
+    """Run the out-of-band OPERA CLI and return the raw predictions CSV text. Requires the MCR runtime.
 
-    Only reached on the box path (no ``--preds``). It writes the ``.smi`` input, shells out to
-    ``run_OPERA.sh``, and reads back the produced ``preds.txt``. The parser (:func:`parse_preds`) then
-    turns that text into records - identical to the offline path, so both modes share one parser.
+    Reached on the box path (no ``--preds``). Writes the ``.smi`` input and shells out to ``run_OPERA.sh``
+    with a ``.csv`` output file, so OPERA emits the column CSV the parser reads (a ``.txt`` output is the
+    verbose human report, which the parser cannot consume). OPERA feeds three endpoints, so the bulk loop
+    dispatches this adapter once per endpoint; results are cached by input hash so OPERA (which loads the
+    MATLAB runtime on every call) runs only ONCE per molecule set and the other dispatches read the cache.
     """
     workdir.mkdir(parents=True, exist_ok=True)
+    key = hashlib.sha256(
+        ("\n".join(sorted(str(r.get("smiles") or "") for r in records)) + "|" + ",".join(endpoints)).encode()
+    ).hexdigest()[:16]
+    cache_dir = _cache_dir()
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cached = cache_dir / f"{key}.csv"
+    if cached.exists() and cached.stat().st_size > 0:
+        return cached.read_text(encoding="utf-8")
+
     in_smi = workdir / "opera_in.smi"
-    out_preds = workdir / "opera_preds.txt"
+    out_preds = workdir / "opera_preds.csv"
     write_opera_input(records, in_smi)
     cmd = build_opera_command(opera_home, mcr, in_smi, out_preds, endpoints)
     proc = subprocess.run(cmd, capture_output=True, text=True)
@@ -320,7 +339,55 @@ def run_opera(
         raise RuntimeError(f"run_OPERA.sh exited {proc.returncode}: {(proc.stderr or '').strip()[:500]}")
     if not out_preds.exists():
         raise RuntimeError(f"OPERA exited 0 but wrote no predictions at {out_preds}")
-    return out_preds.read_text(encoding="utf-8")
+    text = out_preds.read_text(encoding="utf-8")
+    cached.write_text(text, encoding="utf-8")
+    return text
+
+
+def _merge_by_molecule(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Collapse per-(molecule, endpoint) records into one OutputRecord dict per molecule.
+
+    OPERA computes every endpoint in one run; :func:`parse_preds` emits them as separate records (each with
+    its own Conf_index/AD, the transcription shape). Dispatch expects one record per model per molecule, so
+    for a real run they are merged: ``endpoint_values`` unions every OPERA quantity (the aggregators read
+    them by key), per-endpoint confidence/AD go to ``uncertainty.extra``, and the LogD (lipophilicity home)
+    conf/AD are promoted to the top-level uncertainty fields.
+    """
+    from collections import OrderedDict
+
+    groups: "OrderedDict[str, list[dict[str, Any]]]" = OrderedDict()
+    for rec in records:
+        mid = str((rec.get("raw") or {}).get("molecule_id", "mol"))
+        groups.setdefault(mid, []).append(rec)
+
+    merged: list[dict[str, Any]] = []
+    for mid, recs in groups.items():
+        ev: dict[str, Any] = {}
+        extra: dict[str, Any] = {}
+        top: dict[str, Any] = {"conf_index": None, "ad_in_domain": None, "ad_index": None}
+        for rec in recs:
+            ev.update(rec.get("endpoint_values") or {})
+            ep = (rec.get("raw") or {}).get("endpoint")
+            unc = rec.get("uncertainty") or {}
+            if ep is None:
+                continue
+            for field in ("conf_index", "ad_in_domain", "ad_index"):
+                if unc.get(field) is not None:
+                    extra[f"{ep}_{field}"] = unc[field]
+            pred_range = (unc.get("extra") or {}).get("pred_range")
+            if pred_range:
+                extra[f"{ep}_pred_range"] = pred_range
+            if ep == "LogD":
+                for field in ("conf_index", "ad_in_domain", "ad_index"):
+                    top[field] = unc.get(field)
+        merged.append({
+            "model": MODEL,
+            "endpoint_values": ev,
+            "uncertainty": {**top, "extra": extra},
+            "raw": {"molecule_id": mid, "n_endpoints": len(recs)},
+            "provenance": recs[0].get("provenance", {"model": MODEL}),
+        })
+    return merged
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -349,8 +416,13 @@ def main(argv: list[str] | None = None) -> int:
         preds_text = run_opera(records, args.opera_home, args.mcr, tuple(args.endpoints), args.output.parent)
 
     outputs = parse_preds(preds_text)
+    # Dispatch expects one OutputRecord per model per molecule; parse_preds emits one per (molecule,
+    # endpoint). Merge each molecule's endpoints into a single record (aggregators read the quantities by
+    # key). One molecule -> a JSON object; a batch -> a JSON array.
+    merged = _merge_by_molecule(outputs)
+    payload: Any = merged[0] if len(merged) == 1 else merged
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(outputs, indent=2), encoding="utf-8")
+    args.output.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     return 0
 
 
