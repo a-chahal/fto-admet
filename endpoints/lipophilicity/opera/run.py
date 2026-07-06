@@ -109,23 +109,36 @@ def _provenance(header: list[str] | None = None) -> dict[str, Any]:
 # Column classification (header-driven; robust to the _predRange build + verbose neighbour columns)
 # --------------------------------------------------------------------------------------------------
 
+# A real OPERA CL preds.csv names some columns differently from the pipeline's canonical endpoint keys
+# that the downstream aggregators consume (the synthetic sample used the canonical names). Verified against
+# a real box run (OPERA 2.9, MCR v912): the CL emits LogD55_pred / LogD74_pred (two pH-specific columns,
+# not a single LogD_pred), FUB (upper), and CACO2. Canonicalize so OPERA's lens actually reaches the
+# lipophilicity aggregate (keys off "LogD" at pH 7.4) and the ppb aggregate (keys off "FuB"). LogD74 is the
+# physiological pH-7.4 read the pipeline calls "LogD"; LogD55 is kept as a distinct secondary key. Mapping
+# also reunites the shared AD_/Conf_index_ columns (headered "LogD") with the LogD74 prediction.
+_CANONICAL_ENDPOINT = {"LogD74": "LogD", "FUB": "FuB", "CACO2": "Caco2"}
+
+
 def classify_column(col: str) -> tuple[str, str] | None:
     """Map one OPERA column name to ``(endpoint, kind)`` or ``None`` if it is not an endpoint column.
 
     Order matters: ``AD_index_`` and ``Conf_index_`` are checked before the bare ``AD_`` prefix (they all
-    start with ``AD``/``Conf``), and ``_predRange`` is a distinct suffix from ``_pred``.
+    start with ``AD``/``Conf``), and ``_predRange`` is a distinct suffix from ``_pred``. The endpoint name
+    is canonicalized (``_CANONICAL_ENDPOINT``) so a real preds.csv feeds the aggregators.
     """
     if col.startswith("AD_index_"):
-        return col[len("AD_index_"):], "ad_index"
-    if col.startswith("Conf_index_"):
-        return col[len("Conf_index_"):], "conf_index"
-    if col.startswith("AD_"):
-        return col[len("AD_"):], "ad_in_domain"
-    if col.endswith("_predRange"):
-        return col[: -len("_predRange")], "pred_range"
-    if col.endswith("_pred"):
-        return col[: -len("_pred")], "pred"
-    return None
+        endpoint, kind = col[len("AD_index_"):], "ad_index"
+    elif col.startswith("Conf_index_"):
+        endpoint, kind = col[len("Conf_index_"):], "conf_index"
+    elif col.startswith("AD_"):
+        endpoint, kind = col[len("AD_"):], "ad_in_domain"
+    elif col.endswith("_predRange"):
+        endpoint, kind = col[: -len("_predRange")], "pred_range"
+    elif col.endswith("_pred"):
+        endpoint, kind = col[: -len("_pred")], "pred"
+    else:
+        return None
+    return _CANONICAL_ENDPOINT.get(endpoint, endpoint), kind
 
 
 def _f(value: Any) -> float | None:
