@@ -222,6 +222,7 @@ def run_model_batch(
     output_dir: str | os.PathLike[str],
     *,
     config: Config | None = None,
+    timeout: float | None = None,
 ) -> list[OutputRecord]:
     """Dispatch ONE model over a batch of molecules in a SINGLE subprocess (the model loads once).
 
@@ -230,6 +231,7 @@ def run_model_batch(
     (every adapter accepts an array and emits one record per input, in order). Returns the validated records
     aligned positionally to ``inputs``. Web-only / out-of-band models are refused like :func:`run_model`;
     a GPU is claimed once for the batch; any run-time failure writes one ``fail`` ledger record and raises.
+    ``timeout`` (seconds) caps the subprocess so one pathologically slow model cannot stall a parallel run.
     """
     cfg = config if config is not None else get_config()
     spec = REGISTRY[name]
@@ -278,11 +280,15 @@ def run_model_batch(
 
     with gpu_ctx:
         try:
-            proc = subprocess.run(cmd, env=run_env, capture_output=True, text=True)
+            proc = subprocess.run(cmd, env=run_env, capture_output=True, text=True, timeout=timeout)
         except FileNotFoundError as exc:
             reason = f"failed to launch {name}: {exc}"
             _fail(gpu_index, reason)
             raise DispatchError(reason) from exc
+        except subprocess.TimeoutExpired:
+            reason = f"{name} exceeded the {timeout}s batch timeout on {len(records)} molecules"
+            _fail(gpu_index, reason)
+            raise DispatchError(reason)
         if proc.returncode != 0:
             reason = f"{name} exited {proc.returncode}: {(proc.stderr or '').strip()[:500]}"
             _fail(gpu_index, reason)

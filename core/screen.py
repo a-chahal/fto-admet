@@ -17,7 +17,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
@@ -61,8 +63,15 @@ def screen_batch(
     *,
     config: Config | None = None,
     out_dir: str | Path | None = None,
+    max_workers: int | None = None,
+    per_model_timeout: float | None = None,
 ) -> list[dict[str, Any]]:
-    """Screen many molecules fast: dispatch each model ONCE over the batch, then aggregate per molecule."""
+    """Screen many molecules fast: dispatch each model ONCE over the batch, then aggregate per molecule.
+
+    Models are independent, so they are dispatched CONCURRENTLY (``max_workers`` threads, each awaiting one
+    model's subprocess): wall-clock is the slowest single model, not the sum. ``per_model_timeout`` (seconds)
+    caps each model so one pathologically slow model is dropped instead of stalling the run.
+    """
     cfg = config if config is not None else get_config()
     inputs = [{"smiles": str(m["smiles"]).strip(), "mol_id": m.get("mol_id")} for m in molecules]
     if not inputs:
@@ -78,13 +87,23 @@ def screen_batch(
 
     model_recs: dict[Any, list] = {}
     failures_by_model: dict[Any, str] = {}
-    for name in unique:
-        try:
-            model_recs[name] = dispatch.run_model_batch(name, inputs, base / "batch", config=cfg)
-        except DispatchError as exc:
-            # One model failing (web-only, missing env, bad batch) never sinks the run; it is dropped and
-            # every endpoint it feeds records the failure. The rest of the card still assembles.
-            failures_by_model[name] = str(exc)
+
+    def _dispatch(name):
+        return dispatch.run_model_batch(name, inputs, base / "batch", config=cfg, timeout=per_model_timeout)
+
+    workers = max_workers or min(len(unique), (os.cpu_count() or 8))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {pool.submit(_dispatch, name): name for name in unique}
+        for fut in as_completed(futures):
+            name = futures[fut]
+            try:
+                model_recs[name] = fut.result()
+            except DispatchError as exc:
+                # One model failing (web-only, missing env, timeout, bad batch) never sinks the run; it is
+                # dropped and every endpoint it feeds records the failure. The rest of the card assembles.
+                failures_by_model[name] = str(exc)
+            except Exception as exc:  # defensive: an unexpected error in one model stays isolated
+                failures_by_model[name] = f"{type(exc).__name__}: {exc}"
 
     return [_card_for(inp, endpoints_specs, model_recs, i, failures_by_model) for i, inp in enumerate(inputs)]
 
@@ -128,13 +147,17 @@ def build_parser() -> argparse.ArgumentParser:
     src.add_argument("--input", type=Path, help="a .smi file or InputRecord JSON (object or array) of molecules")
     p.add_argument("--mol-id", default=None, help="optional label when using --smiles")
     p.add_argument("--out", type=Path, default=None, help="write the card(s) JSON here (default: stdout)")
+    p.add_argument("--timeout", type=float, default=None,
+                   help="per-model seconds cap; a slower model is dropped and recorded as a failure")
+    p.add_argument("--workers", type=int, default=None,
+                   help="max concurrent model dispatches (default: cpu count)")
     return p
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     molecules = _read_molecules(args)
-    cards = screen_batch(molecules)
+    cards = screen_batch(molecules, max_workers=args.workers, per_model_timeout=args.timeout)
     # --smiles -> a single card object; --input -> a list (even for one molecule), so batch output is stable.
     payload: Any = cards[0] if (args.smiles and len(cards) == 1) else cards
     text = json.dumps(payload, indent=2, default=str)

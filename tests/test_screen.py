@@ -16,7 +16,7 @@ def _rec(model: str) -> OutputRecord:
 def test_screen_batch_dispatches_each_model_exactly_once(monkeypatch, tmp_path):
     calls: dict = {}
 
-    def fake_batch(name, inputs, out_dir, *, config=None):
+    def fake_batch(name, inputs, out_dir, *, config=None, timeout=None):
         calls[name] = calls.get(name, 0) + 1
         return [_rec(name.value) for _ in inputs]  # one record per input, in order
 
@@ -36,7 +36,7 @@ def test_screen_batch_dispatches_each_model_exactly_once(monkeypatch, tmp_path):
 
 
 def test_screen_batch_isolates_a_failing_model(monkeypatch, tmp_path):
-    def fake_batch(name, inputs, out_dir, *, config=None):
+    def fake_batch(name, inputs, out_dir, *, config=None, timeout=None):
         if name == ModelName.admet_ai:
             raise DispatchError("boom")
         return [_rec(name.value) for _ in inputs]
@@ -54,7 +54,7 @@ def test_screen_batch_isolates_a_failing_model(monkeypatch, tmp_path):
 def test_screen_single_delegates_to_batch(monkeypatch, tmp_path):
     seen: dict = {}
 
-    def fake_batch(name, inputs, out_dir, *, config=None):
+    def fake_batch(name, inputs, out_dir, *, config=None, timeout=None):
         seen[name] = len(inputs)
         return [_rec(name.value) for _ in inputs]
 
