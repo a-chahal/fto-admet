@@ -1,16 +1,16 @@
-"""Screen ONE molecule across every ADMET endpoint - the single-SMILES entry point.
+"""Screen one or many molecules across every ADMET endpoint - the single entry point.
 
-This is the one place a user passes a SMILES. It runs each :class:`~core.models.Endpoint`'s bulk-loop
-models (via :func:`core.run.run_endpoint`: dispatch each model, then hand the collected outputs to that
-endpoint's aggregator) and assembles every endpoint's verdict into ONE consolidated ADMET card.
+The whole point is SPEED. Each model is dispatched EXACTLY ONCE over the entire set of molecules (every
+adapter accepts a batch and emits one record per input, in order), and its outputs are then reused across
+every endpoint it feeds. So the expensive model-load cost is paid |models| times total, NOT
+|models| x |endpoints| x |molecules|. A cross-cutting model like admet_ai loads once for the whole run
+instead of ~10 times per molecule.
 
-    python -m core.screen --smiles "CC(=O)O" --mol-id FTO-43
-    python -m core.screen --input tests/fixtures/fto43.smi --out card.json
+    python -m core.screen --smiles "CCO" [--mol-id ethanol] [--out card.json]
+    python -m core.screen --input molecules.smi --out cards.json   # many molecules -> a list of cards
 
-Model dispatch shells out to each model's isolated pixi env (box only; CLAUDE.md 0). An endpoint whose
-models are absent / fail is still reported - its ``failures`` list is populated and its aggregator runs on
-whatever collected, so the card always assembles. The card is JSON: per endpoint, the models that ran, any
-failures, and the aggregator's fused verdict.
+Output is a JSON card per molecule: for each endpoint, the models that ran, any failures, and the
+aggregator's fused verdict.
 """
 
 from __future__ import annotations
@@ -21,69 +21,126 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from core import dispatch
 from core.config import Config, get_config
+from core.dispatch import DispatchError
 from core.models import Endpoint
-from core.run import run_endpoint
+from core.run import aggregate_records, select_models
 
 
-def _read_smiles(args: argparse.Namespace) -> tuple[str, str | None]:
-    """Resolve (smiles, mol_id) from --smiles or the first data line of a --input .smi / InputRecord JSON."""
+def _card_for(
+    inp: dict[str, Any],
+    endpoints_specs: dict[Endpoint, list],
+    model_recs: dict[Any, list],
+    index: int,
+    failures_by_model: dict[Any, str],
+) -> dict[str, Any]:
+    """Assemble one molecule's ADMET card by reusing the already-dispatched batch records."""
+    card: dict[str, Any] = {"smiles": inp["smiles"], "mol_id": inp.get("mol_id"), "endpoints": {}}
+    for ep in Endpoint:
+        recs: list = []
+        ran: list[str] = []
+        fails: list[dict[str, str]] = []
+        for spec in endpoints_specs[ep]:
+            if spec.name in failures_by_model:
+                fails.append({"model": spec.name.value, "reason": failures_by_model[spec.name]})
+                continue
+            rec = model_recs[spec.name][index] if spec.name in model_recs else None
+            if rec is not None:
+                recs.append(rec)
+                ran.append(spec.name.value)
+        verdict, note = aggregate_records(ep, recs, mol_id=inp.get("mol_id") or f"mol_{index}")
+        if hasattr(verdict, "model_dump"):
+            verdict = verdict.model_dump(mode="json")
+        card["endpoints"][ep.value] = {"models_run": ran, "failures": fails, "verdict": verdict, "note": note}
+    return card
+
+
+def screen_batch(
+    molecules: list[dict[str, Any]],
+    *,
+    config: Config | None = None,
+    out_dir: str | Path | None = None,
+) -> list[dict[str, Any]]:
+    """Screen many molecules fast: dispatch each model ONCE over the batch, then aggregate per molecule."""
+    cfg = config if config is not None else get_config()
+    inputs = [{"smiles": str(m["smiles"]).strip(), "mol_id": m.get("mol_id")} for m in molecules]
+    if not inputs:
+        return []
+    base = Path(out_dir) if out_dir is not None else Path(cfg.outputs)
+
+    # Every endpoint's bulk-loop models, and the de-duplicated union to dispatch (each model exactly once).
+    endpoints_specs = {ep: select_models(ep) for ep in Endpoint}
+    unique: dict[Any, Any] = {}
+    for ep in Endpoint:
+        for spec in endpoints_specs[ep]:
+            unique.setdefault(spec.name, spec)
+
+    model_recs: dict[Any, list] = {}
+    failures_by_model: dict[Any, str] = {}
+    for name in unique:
+        try:
+            model_recs[name] = dispatch.run_model_batch(name, inputs, base / "batch", config=cfg)
+        except DispatchError as exc:
+            # One model failing (web-only, missing env, bad batch) never sinks the run; it is dropped and
+            # every endpoint it feeds records the failure. The rest of the card still assembles.
+            failures_by_model[name] = str(exc)
+
+    return [_card_for(inp, endpoints_specs, model_recs, i, failures_by_model) for i, inp in enumerate(inputs)]
+
+
+def screen(
+    smiles: str,
+    mol_id: str | None = None,
+    *,
+    config: Config | None = None,
+    out_dir: str | Path | None = None,
+) -> dict[str, Any]:
+    """Screen ONE molecule into one card. Delegates to :func:`screen_batch`, so each model dispatches once."""
+    return screen_batch([{"smiles": smiles, "mol_id": mol_id}], config=config, out_dir=out_dir)[0]
+
+
+def _read_molecules(args: argparse.Namespace) -> list[dict[str, Any]]:
+    """Resolve the molecule list from --smiles, or a --input .smi / InputRecord JSON (object or array)."""
     if args.smiles:
-        return args.smiles.strip(), args.mol_id
+        return [{"smiles": args.smiles.strip(), "mol_id": args.mol_id}]
     text = Path(args.input).read_text(encoding="utf-8").strip()
-    if text.startswith("{"):
-        d = json.loads(text)
-        return str(d["smiles"]).strip(), d.get("mol_id", args.mol_id)
+    if text.startswith("[") or text.startswith("{"):
+        data = json.loads(text)
+        rows = data if isinstance(data, list) else [data]
+        return [{"smiles": str(d["smiles"]).strip(), "mol_id": d.get("mol_id")} for d in rows]
+    mols: list[dict[str, Any]] = []
     for raw in text.splitlines():
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
         parts = line.split()
-        return parts[0], (parts[1] if len(parts) > 1 else args.mol_id)
-    raise SystemExit("no SMILES found in --input")
-
-
-def screen(smiles: str, mol_id: str | None = None, *, config: Config | None = None,
-           out_dir: str | Path | None = None) -> dict[str, Any]:
-    """Run every endpoint for one molecule and return the consolidated ADMET card (a plain dict)."""
-    cfg = config if config is not None else get_config()
-    payload = {"smiles": smiles, "mol_id": mol_id}
-    card: dict[str, Any] = {"smiles": smiles, "mol_id": mol_id, "endpoints": {}}
-    for ep in Endpoint:
-        base = Path(out_dir) / ep.value if out_dir is not None else None
-        result = run_endpoint(ep, payload, out=base, config=cfg)
-        agg = result.aggregate
-        if hasattr(agg, "model_dump"):
-            agg = agg.model_dump(mode="json")
-        card["endpoints"][ep.value] = {
-            "models_run": [r.model.value for r in result.records],
-            "failures": [{"model": m.value, "reason": reason} for m, reason in result.failures],
-            "verdict": agg,
-            "note": result.note,
-        }
-    return card
+        mols.append({"smiles": parts[0], "mol_id": parts[1] if len(parts) > 1 else None})
+    return mols
 
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="python -m core.screen",
-                                description="Screen one molecule across all ADMET endpoints (one SMILES in, "
-                                            "one consolidated ADMET card out).")
+                                description="Screen one or many molecules across all ADMET endpoints "
+                                            "(each model is dispatched once over the whole set).")
     src = p.add_mutually_exclusive_group(required=True)
-    src.add_argument("--smiles", help="the molecule SMILES to screen")
-    src.add_argument("--input", type=Path, help="a .smi file or an InputRecord JSON (first molecule is used)")
-    p.add_argument("--mol-id", default=None, help="optional molecule id/label for the card")
-    p.add_argument("--out", type=Path, default=None, help="write the card JSON here (default: stdout)")
+    src.add_argument("--smiles", help="a single molecule SMILES to screen")
+    src.add_argument("--input", type=Path, help="a .smi file or InputRecord JSON (object or array) of molecules")
+    p.add_argument("--mol-id", default=None, help="optional label when using --smiles")
+    p.add_argument("--out", type=Path, default=None, help="write the card(s) JSON here (default: stdout)")
     return p
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    smiles, mol_id = _read_smiles(args)
-    card = screen(smiles, mol_id)
-    text = json.dumps(card, indent=2, default=str)
+    molecules = _read_molecules(args)
+    cards = screen_batch(molecules)
+    # --smiles -> a single card object; --input -> a list (even for one molecule), so batch output is stable.
+    payload: Any = cards[0] if (args.smiles and len(cards) == 1) else cards
+    text = json.dumps(payload, indent=2, default=str)
     if args.out is not None:
         Path(args.out).write_text(text, encoding="utf-8")
-        print(f"wrote ADMET card for {smiles!r} -> {args.out}")
+        print(f"wrote {len(cards)} card(s) -> {args.out}")
     else:
         print(text)
     return 0

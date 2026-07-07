@@ -159,28 +159,37 @@ def run_endpoint(
             # The fail is already ledgered inside run_model; capture it and keep the endpoint going.
             failures.append((spec.name, str(exc)))
 
+    mol_id = (input.get("mol_id") if isinstance(input, dict) else getattr(input, "mol_id", None)) or "mol"
+    aggregate_result, note = aggregate_records(endpoint, records, mol_id=mol_id)
+    return EndpointResult(endpoint=endpoint, records=records, aggregate=aggregate_result,
+                          failures=failures, note=note)
+
+
+def aggregate_records(
+    endpoint: Endpoint,
+    records: list[OutputRecord],
+    *,
+    mol_id: str = "mol",
+) -> tuple[Any, str | None]:
+    """Load ``endpoint``'s aggregator and run it over one molecule's ``records``; return ``(result, note)``.
+
+    Shared by :func:`run_endpoint` (single molecule, just-dispatched) and the batch screen (which dispatches
+    each model once and reuses the records). A missing aggregator returns ``(None, <note>)``. Aggregators
+    accept one of two input shapes (a flat single-molecule ``list[OutputRecord]`` such as lipophilicity, or
+    a batch mapping ``{mol_id: records}`` such as distribution / clearance): the flat list is offered first
+    and, if rejected, retried as a single-entry batch map, so every endpoint composes regardless of which
+    contract it authored.
+    """
     aggregator = load_aggregator(endpoint)
     if aggregator is None:
-        note = (
+        return None, (
             f"no aggregator for endpoint '{endpoint.value}' "
             f"(endpoints/{endpoint.value}/aggregate.py not built yet); returning raw records"
         )
-        return EndpointResult(endpoint=endpoint, records=records, aggregate=None,
-                              failures=failures, note=note)
-
-    # Aggregators accept one of two input shapes (an inconsistency across the independently-authored
-    # endpoints): a flat single-molecule ``list[OutputRecord]`` (e.g. lipophilicity), or a batch mapping
-    # ``{mol_id: records}`` (the multi-molecule aggregators, e.g. distribution / clearance / solubility).
-    # run_endpoint screens ONE molecule, so it offers the flat list first and, if that shape is rejected,
-    # retries as a single-entry batch map. (Unifying the two contracts across all aggregators is a
-    # documented follow-up; this keeps the single-molecule composition working for every endpoint today.)
     try:
-        aggregate_result = aggregator(records)
+        return aggregator(records), None
     except Exception:
-        mol_id = (input.get("mol_id") if isinstance(input, dict) else getattr(input, "mol_id", None)) or "mol"
-        aggregate_result = aggregator({mol_id: records})
-    return EndpointResult(endpoint=endpoint, records=records, aggregate=aggregate_result,
-                          failures=failures, note=None)
+        return aggregator({mol_id: records}), None
 
 
 # --------------------------------------------------------------------------- CLI

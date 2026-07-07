@@ -28,15 +28,21 @@ one smiles, full card:
 python -m core.screen --smiles "CC(C)NCC(O)COc1cccc2ccccc12" --out card.json
 ```
 
+many molecules at once (fast: each model loads once for the whole set, not once per molecule):
+
+```bash
+python -m core.screen --input molecules.smi --out cards.json
+```
+
 one endpoint at a time:
 
 ```bash
-python -m core.run --endpoint herg --input mol.smi
+python -m core.run --endpoint herg --input mol.json
 ```
 
-`--input` accepts a `.smi` file or an `InputRecord` json (`{"smiles": "...", "mol_id": "..."}`).
-each model runs in its own environment; the first use of a model installs that environment from
-its lockfile, then it is cached.
+`--input` to `core.screen` accepts a `.smi` file or an `InputRecord` json (object or array). each model
+runs in its own environment; the first use of a model installs that environment from its lockfile, then
+it is cached.
 
 ## how it works
 

@@ -214,3 +214,101 @@ def run_model(
         path=cfg.ledger,
     )
     return output
+
+
+def run_model_batch(
+    name: ModelName,
+    inputs: list[Any],
+    output_dir: str | os.PathLike[str],
+    *,
+    config: Config | None = None,
+) -> list[OutputRecord]:
+    """Dispatch ONE model over a batch of molecules in a SINGLE subprocess (the model loads once).
+
+    The speed path for screening many molecules: instead of dispatching a model once per molecule (which
+    reloads its weights every time), the whole batch is written as a JSON array and the adapter runs once
+    (every adapter accepts an array and emits one record per input, in order). Returns the validated records
+    aligned positionally to ``inputs``. Web-only / out-of-band models are refused like :func:`run_model`;
+    a GPU is claimed once for the batch; any run-time failure writes one ``fail`` ledger record and raises.
+    """
+    cfg = config if config is not None else get_config()
+    spec = REGISTRY[name]
+    if spec.env_manifest is None:
+        raise DispatchError(
+            f"{name} is web-only / out-of-band ({spec.provenance.access_tag}); it has no pixi env and is "
+            f"run via its README SOP, not through run_model_batch."
+        )
+    if not inputs:
+        return []
+
+    records = [validate_input(x) for x in inputs]
+    out_dir = Path(output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    in_path = out_dir / f"{name.value}.batch.input.json"
+    out_path = out_dir / f"{name.value}.batch.output.json"
+    in_path.write_text(json.dumps([r.model_dump(mode="json") for r in records]), encoding="utf-8")
+
+    input_hash = ledger.hash_input("|".join(r.smiles for r in records))
+    env_lock_hash = _lock_hash(spec)
+
+    def _fail(cuda_device: int | None, reason: str) -> None:
+        ledger.append(
+            ledger.new_record(model=name.value, input_hash=input_hash, output_path=str(out_path),
+                              env_lock_hash=env_lock_hash, cuda_device=cuda_device, status="fail", note=reason),
+            path=cfg.ledger,
+        )
+
+    if spec.requires_gpu:
+        gpu_index = gpu.pick_free_gpu(config=cfg)
+        if gpu_index is None:
+            reason = f"no free GPU available for {name} (all devices busy or locked)"
+            _fail(None, reason)
+            raise DispatchError(reason)
+        gpu_ctx: Any = gpu.claim(gpu_index, config=cfg)
+    else:
+        gpu_index = None
+        gpu_ctx = contextlib.nullcontext()
+
+    cmd = build_command(spec, in_path, out_path, gpu_index)
+    run_env = dict(os.environ)
+    for _k, _v in _parse_dotenv(_REPO_ROOT / ".env").items():
+        run_env.setdefault(_k, _v)
+    if gpu_index is not None:
+        run_env["CUDA_VISIBLE_DEVICES"] = str(gpu_index)
+
+    with gpu_ctx:
+        try:
+            proc = subprocess.run(cmd, env=run_env, capture_output=True, text=True)
+        except FileNotFoundError as exc:
+            reason = f"failed to launch {name}: {exc}"
+            _fail(gpu_index, reason)
+            raise DispatchError(reason) from exc
+        if proc.returncode != 0:
+            reason = f"{name} exited {proc.returncode}: {(proc.stderr or '').strip()[:500]}"
+            _fail(gpu_index, reason)
+            raise DispatchError(reason)
+        if not out_path.exists():
+            reason = f"{name} exited 0 but wrote no output at {out_path}"
+            _fail(gpu_index, reason)
+            raise DispatchError(reason)
+        try:
+            payload = json.loads(out_path.read_text(encoding="utf-8"))
+            if isinstance(payload, dict):
+                payload = [payload]
+            outputs = [spec.output_schema.model_validate(item) for item in payload]
+        except Exception as exc:
+            reason = f"{name} batch output failed {spec.output_schema.__name__} validation: {exc}"
+            _fail(gpu_index, reason)
+            raise DispatchError(reason) from exc
+
+    if len(outputs) != len(records):
+        reason = f"{name} returned {len(outputs)} records for {len(records)} inputs (adapter did not batch 1:1)"
+        _fail(gpu_index, reason)
+        raise DispatchError(reason)
+
+    ledger.append(
+        ledger.new_record(model=name.value, input_hash=input_hash, output_path=str(out_path),
+                          env_lock_hash=env_lock_hash, cuda_device=gpu_index, status="ok"),
+        path=cfg.ledger,
+    )
+    return outputs
