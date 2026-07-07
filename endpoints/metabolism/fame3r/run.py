@@ -47,6 +47,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import multiprocessing
 import os
 import sys
 import warnings
@@ -298,6 +299,39 @@ def record_for(rec: dict[str, Any], predictor: _Predictor, provenance: dict[str,
     }
 
 
+# Scoring one molecule is CPU-bound (~30s of CDPKit descriptor calc for its atoms). For a batch that is
+# parallelized ACROSS molecules: the model (loaded once, a few GB) is shared with fork workers via
+# copy-on-write, so many molecules run at once instead of serially. FAME3R_WORKERS overrides the count.
+_MP_PREDICTOR: "_Predictor | None" = None
+_MP_PROVENANCE: dict[str, Any] = {}
+
+
+def _score_worker(rec: dict[str, Any]) -> dict[str, Any]:
+    """Pool worker: score one molecule using the fork-inherited predictor + provenance."""
+    return record_for(rec, _MP_PREDICTOR, _MP_PROVENANCE)  # type: ignore[arg-type]
+
+
+def _score_all(records: list[dict[str, Any]], predictor: "_Predictor", provenance: dict[str, Any]) -> list[dict[str, Any]]:
+    """Score every molecule; parallelize across molecules for a batch, fall back to serial on any issue."""
+    if len(records) <= 1:
+        return [record_for(rec, predictor, provenance) for rec in records]
+    default_workers = max(1, (os.cpu_count() or 8) // 12)  # ~12 CDPKit threads per molecule; do not oversubscribe
+    try:
+        workers = min(len(records), max(1, int(os.environ.get("FAME3R_WORKERS", default_workers))))
+    except ValueError:
+        workers = min(len(records), default_workers)
+    if workers <= 1:
+        return [record_for(rec, predictor, provenance) for rec in records]
+    global _MP_PREDICTOR, _MP_PROVENANCE
+    _MP_PREDICTOR, _MP_PROVENANCE = predictor, provenance
+    try:
+        ctx = multiprocessing.get_context("fork")
+        with ctx.Pool(processes=workers) as pool:
+            return pool.map(_score_worker, records)
+    except Exception:  # fork/thread trouble -> the serial path is always correct, just slower
+        return [record_for(rec, predictor, provenance) for rec in records]
+
+
 def main(argv: list[str] | None = None) -> int:
     warnings.filterwarnings("ignore")  # keep stdout clean; the real output is the JSON file
     parser = argparse.ArgumentParser(description="FAME3R per-atom site-of-metabolism adapter (uniform model CLI).")
@@ -311,7 +345,7 @@ def main(argv: list[str] | None = None) -> int:
     predictor = _Predictor(mdir)  # loads models once; raises a clear error if the artifacts are absent
 
     records, single = parse_inputs(args.input.read_text(encoding="utf-8"))
-    outputs = [record_for(rec, predictor, provenance) for rec in records]
+    outputs = _score_all(records, predictor, provenance)
     payload: Any = outputs[0] if (single and len(outputs) == 1) else outputs
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
