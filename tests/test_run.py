@@ -105,19 +105,27 @@ def test_run_endpoint_missing_aggregator_returns_records_and_note(monkeypatch):
 
 
 # --------------------------------------------------------------------------- aggregator invoked
-def test_run_endpoint_calls_aggregator_with_collected_records(monkeypatch):
+def test_run_endpoint_calls_aggregator_with_the_shared_contract(monkeypatch):
+    # Every aggregator takes the shared {mol_id: records} mapping and returns a `.molecules` batch;
+    # aggregate_records pulls out this single molecule's per-molecule result.
     _record_dispatch(monkeypatch)
     seen: dict = {}
 
-    def fake_aggregate(records):
-        seen["records"] = records
-        return {"fused": len(records)}
+    class _Batch:
+        def __init__(self, molecules):
+            self.molecules = molecules
+
+    def fake_aggregate(molecules):
+        seen["molecules"] = molecules
+        return _Batch([{"fused": len(recs)} for recs in molecules.values()])
 
     monkeypatch.setattr(run, "load_aggregator", lambda ep: fake_aggregate)
 
     result = run_endpoint(Endpoint.herg, {"smiles": "c1ccccc1"}, out="/tmp/ignored")
 
-    assert seen["records"] == result.records
+    # the aggregator received {mol_id: records} carrying exactly the collected records
+    assert list(seen["molecules"].values()) == [result.records]
+    # and the single per-molecule result was surfaced
     assert result.aggregate == {"fused": len(result.records)}
     assert result.note is None
 

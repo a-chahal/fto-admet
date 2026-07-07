@@ -48,6 +48,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from core.aggregate import normalize_molecules
 from core.models import Endpoint, ModelName
 from core.schemas import OutputRecord
 
@@ -98,6 +99,7 @@ class EndpointResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     endpoint: Endpoint = Endpoint.lipophilicity
+    mol_id: str | None = None
     quantity: str = "logD (log units, pH 7.4)"
     consensus: float | None
     lenses: list[Lens]
@@ -193,15 +195,51 @@ def _logp_lens(
     return Lens(model=model, label=label, raw_kind="logP", raw_value=logp, logd=logd, converted=True)
 
 
+class LipophilicityResult(BaseModel):
+    """Batch envelope: one :class:`EndpointResult` per molecule (the shared aggregator output shape).
+
+    Every endpoint aggregator takes the ``{mol_id: records}`` contract and returns a ``.molecules`` list;
+    this is lipophilicity's. The per-molecule result keeps its original consensus/lens/flag shape.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    endpoint: Endpoint = Endpoint.lipophilicity
+    molecules: list[EndpointResult]
+    n_molecules: int
+
+
 def aggregate(
+    molecules: Any,
+    *,
+    pka: float | None = None,
+    pka_kind: str | None = None,
+    ph: float = DEFAULT_PH,
+    measured_anchor: float = MEASURED_LOGD_ANCHOR,
+) -> LipophilicityResult:
+    """Harmonize each molecule's lipophilicity lenses onto a logD consensus (the shared batch contract).
+
+    ``molecules`` is the canonical ``{mol_id: records}`` mapping (or any shape :func:`normalize_molecules`
+    accepts, including a single molecule's flat record list). Each molecule is scored independently by
+    :func:`_aggregate_one` and returned in ``.molecules``.
+    """
+    mols = [
+        _aggregate_one(recs, mid, pka=pka, pka_kind=pka_kind, ph=ph, measured_anchor=measured_anchor)
+        for mid, recs in normalize_molecules(molecules)
+    ]
+    return LipophilicityResult(molecules=mols, n_molecules=len(mols))
+
+
+def _aggregate_one(
     records: list[OutputRecord] | list[dict[str, Any]],
+    mol_id: str | None = None,
     *,
     pka: float | None = None,
     pka_kind: str | None = None,
     ph: float = DEFAULT_PH,
     measured_anchor: float = MEASURED_LOGD_ANCHOR,
 ) -> EndpointResult:
-    """Harmonize the lipophilicity lenses onto a logD consensus, with the spread/anchor trust flag.
+    """Harmonize ONE molecule's lipophilicity lenses onto a logD consensus, with the spread/anchor flag.
 
     ``pka`` (with optional ``pka_kind`` in ``{"base","acid"}``) injects the single shared pKa; when it is
     ``None`` the placeholder source (OPERA ``pKa_b_pred``, F-13) is read from the records. logP lenses are
@@ -291,6 +329,7 @@ def aggregate(
     recommend_measured_anchor = not trust
 
     return EndpointResult(
+        mol_id=mol_id,
         consensus=consensus,
         lenses=lenses,
         n_lenses=len(on_axis),

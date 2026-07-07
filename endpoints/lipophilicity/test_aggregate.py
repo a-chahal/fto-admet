@@ -28,6 +28,11 @@ from endpoints.lipophilicity.aggregate import (
 PROV = {"model": "test"}
 
 
+def one(records, **kw):
+    """Score a single molecule and return its per-molecule result (aggregate() returns a `.molecules` batch)."""
+    return aggregate(records, **kw).molecules[0]
+
+
 def crippen(logp: float) -> dict:
     return {
         "model": ModelName.rdkit_crippen,
@@ -95,7 +100,7 @@ def test_tight_cluster_low_spread_and_trust():
     drop = math.log10(1 + 10 ** (pka - DEFAULT_PH))
     records = [crippen(2.5), swissadme(2.6), opera_logd(1.0)]
 
-    res = aggregate(records, pka=pka)
+    res = one(records, pka=pka)
 
     assert res.endpoint == Endpoint.lipophilicity
     assert res.n_lenses == 3
@@ -117,7 +122,7 @@ def test_scattered_set_high_spread():
     pka = 8.9
     records = [crippen(6.0), swissadme(1.0), opera_logd(1.0)]
 
-    res = aggregate(records, pka=pka)
+    res = one(records, pka=pka)
 
     assert res.n_lenses == 3
     assert res.spread_flag == "high"
@@ -131,7 +136,7 @@ def test_scattered_set_high_spread():
 # --------------------------------------------------------------------------------------------------
 def test_logp_lenses_are_converted_before_consensus():
     pka = 8.9
-    res = aggregate([crippen(2.5), swissadme(2.6), opera_logd(1.0)], pka=pka)
+    res = one([crippen(2.5), swissadme(2.6), opera_logd(1.0)], pka=pka)
 
     by_model = {l.model: l for l in res.lenses}
     crip = by_model[ModelName.rdkit_crippen]
@@ -154,7 +159,7 @@ def test_logp_lenses_are_converted_before_consensus():
 # --------------------------------------------------------------------------------------------------
 def test_no_pka_excludes_logp_lenses_from_consensus():
     # rdkit (logP) + opera (native logD), and NO pKa anywhere.
-    res = aggregate([crippen(4.0), opera_logd(1.05)])
+    res = one([crippen(4.0), opera_logd(1.05)])
 
     assert res.pka_used is None
     # only the native logD lens reaches the axis
@@ -167,7 +172,7 @@ def test_no_pka_excludes_logp_lenses_from_consensus():
 
 def test_no_lens_at_all_yields_undefined_consensus():
     # only logP lenses, no pKa -> nothing reaches the logD axis
-    res = aggregate([crippen(4.0), swissadme(3.5)])
+    res = one([crippen(4.0), swissadme(3.5)])
     assert res.consensus is None
     assert res.n_lenses == 0
     assert res.spread_flag == "high"
@@ -181,7 +186,7 @@ def test_pka_resolved_from_opera_pka_b_record():
     pka = 8.9
     records = [crippen(2.5), opera_pka_b(pka), opera_logd(1.0)]
 
-    res = aggregate(records)  # no injected pka
+    res = one(records)  # no injected pka
 
     assert res.pka_used == pytest.approx(pka)
     assert res.pka_source == "opera:pKa_b"
@@ -193,7 +198,7 @@ def test_pka_resolved_from_opera_pka_b_record():
 
 def test_injected_pka_overrides_records():
     records = [crippen(2.5), opera_pka_b(5.0)]
-    res = aggregate(records, pka=8.9)
+    res = one(records, pka=8.9)
     assert res.pka_used == pytest.approx(8.9)
     assert res.pka_source == "injected"
 
@@ -206,7 +211,7 @@ def test_consensus_far_from_anchor_raises_flag_even_if_converged():
     pka = 3.0
     records = [crippen(5.0), swissadme(5.05), opera_logd(5.0)]
 
-    res = aggregate(records, pka=pka)
+    res = one(records, pka=pka)
 
     assert res.spread_flag == "low"  # they converge...
     assert res.trust is False        # ...but far from the measured anchor
@@ -216,6 +221,17 @@ def test_consensus_far_from_anchor_raises_flag_even_if_converged():
 
 
 def test_deferred_boundaries_are_flagged():
-    res = aggregate([opera_logd(1.05)])
+    res = one([opera_logd(1.05)])
     joined = " ".join(res.deferred)
     assert "F-13" in joined and "F-16" in joined
+
+
+# --------------------------------------------------------------------------------------------------
+# The shared contract: aggregate() takes {mol_id: records} and returns one result per molecule.
+# --------------------------------------------------------------------------------------------------
+def test_batch_scores_each_molecule_independently():
+    res = aggregate({"A": [opera_logd(1.0)], "B": [opera_logd(2.0)]}, pka=8.9)
+    assert res.n_molecules == 2
+    assert [m.mol_id for m in res.molecules] == ["A", "B"]
+    assert res.molecules[0].consensus == pytest.approx(1.0)
+    assert res.molecules[1].consensus == pytest.approx(2.0)

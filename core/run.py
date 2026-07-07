@@ -174,11 +174,10 @@ def aggregate_records(
     """Load ``endpoint``'s aggregator and run it over one molecule's ``records``; return ``(result, note)``.
 
     Shared by :func:`run_endpoint` (single molecule, just-dispatched) and the batch screen (which dispatches
-    each model once and reuses the records). A missing aggregator returns ``(None, <note>)``. Aggregators
-    accept one of two input shapes (a flat single-molecule ``list[OutputRecord]`` such as lipophilicity, or
-    a batch mapping ``{mol_id: records}`` such as distribution / clearance): the flat list is offered first
-    and, if rejected, retried as a single-entry batch map, so every endpoint composes regardless of which
-    contract it authored.
+    each model once and reuses the records). A missing aggregator returns ``(None, <note>)``. Every
+    aggregator takes the one shared input contract (``{mol_id: records}``; see
+    :func:`core.aggregate.normalize_molecules`) and returns a ``.molecules`` batch; for this single molecule
+    the one per-molecule result is pulled out and returned.
     """
     aggregator = load_aggregator(endpoint)
     if aggregator is None:
@@ -186,10 +185,11 @@ def aggregate_records(
             f"no aggregator for endpoint '{endpoint.value}' "
             f"(endpoints/{endpoint.value}/aggregate.py not built yet); returning raw records"
         )
-    try:
-        return aggregator(records), None
-    except Exception:
-        return aggregator({mol_id: records}), None
+    result = aggregator({mol_id: records})
+    molecules = getattr(result, "molecules", None)
+    if isinstance(molecules, list) and molecules:
+        return molecules[0], None
+    return result, None
 
 
 # --------------------------------------------------------------------------- CLI
