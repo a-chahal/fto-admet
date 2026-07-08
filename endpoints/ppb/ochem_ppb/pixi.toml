@@ -1,0 +1,26 @@
+# Isolated env for the ochem_ppb adapter - a CODE-API (web-service) model, not a local package.
+#
+# OCHEM is a REMOTE service (https://ochem.eu/modelservice): there is no model to load and no CUDA, so
+# this "env" is deliberately minimal. The adapter (run.py) speaks HTTP with the Python STANDARD LIBRARY
+# only (urllib + json + ssl), so no third-party HTTP client is needed and the mocked unit test runs in
+# the core env with no extra deps. ONE ENV PER MODEL is still honored (CLAUDE.md §0/§3) so dispatch can
+# invoke `pixi run --manifest-path endpoints/ppb/ochem_ppb/pixi.toml python run.py ...` uniformly.
+#
+# `openssl` is pinned explicitly: ochem.eu serves an incomplete TLS chain (it omits the Let's Encrypt
+# intermediate), so the adapter completes the chain by walking each cert's AIA URL, and it shells out to
+# the `openssl` CLI to read the leaf cert + its AIA extension. Guaranteeing openssl on PATH keeps that
+# path working inside the isolated env (see run.py `_ochem_ssl_context`).
+#
+# NO box-solved lock is required for this task (mirrors the admetlab3 api-model): api-model kind
+# (CLAUDE.md §5) is client + retry + cache + mocked test; `pixi run` auto-solves this trivial env on
+# first dispatch. The remaining work is live network calls, not env resolution.
+[workspace]
+name = "ochem_ppb"
+version = "0.1.0"
+description = "OCHEM plasma-protein-binding web-API adapter (ppb endpoint; async REST getPrediction.do, modelId 1121)"
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+[dependencies]
+python = "3.11.*"   # stdlib urllib/json/ssl only; no third-party HTTP client
+openssl = "*"       # CLI used to read the leaf cert + AIA extension for chain completion (run.py)
