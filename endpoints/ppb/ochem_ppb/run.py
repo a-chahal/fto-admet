@@ -79,6 +79,7 @@ import json
 import math
 import os
 import re
+import socket
 import ssl
 import subprocess
 import sys
@@ -207,56 +208,93 @@ OCHEM_HOST = "ochem.eu"
 _SSL_CTX: ssl.SSLContext | None = None
 
 
-def _fetch_aia_chain(host: str = OCHEM_HOST, port: int = 443, max_hops: int = 5) -> list[str]:
-    """Return the issuer-certificate chain ``host`` OMITS, fetched via each cert's AIA "CA Issuers" URL.
+def _handshake_verifies(ctx: ssl.SSLContext, host: str = OCHEM_HOST, port: int = 443,
+                        timeout: float = 10.0) -> bool:
+    """True iff a real TLS handshake to ``host`` VERIFIES under ``ctx`` (no data sent). Cheap probe."""
+    try:
+        with socket.create_connection((host, port), timeout=timeout) as sock:
+            with ctx.wrap_socket(sock, server_hostname=host):
+                return True
+    except Exception:
+        return False
 
-    VERIFIED live (2026-07): ochem.eu presents ONLY its leaf certificate and does not send the Let's
-    Encrypt intermediate. curl/browsers complete the chain by following the leaf's AIA (Authority
-    Information Access) "CA Issuers" URL; Python's ``ssl`` does not AIA-fetch, so verification fails with
-    "unable to get local issuer certificate" (on the laptop AND the box). We reproduce the browser
-    behaviour: pull the leaf via ``openssl s_client``, then walk each cert's AIA URL up the chain
-    (leaf -> intermediate(s) -> root), returning the PEMs to add to the trust store. Rotation-proof: it
-    follows whatever AIA the current cert advertises rather than pinning a specific intermediate.
-    Returns ``[]`` if openssl is unavailable or any step fails (caller falls back to the default context).
+
+def _leaf_pem(host: str = OCHEM_HOST, port: int = 443) -> str | None:
+    """Fetch ``host``'s leaf certificate as PEM via ``openssl s_client`` (or ``None`` if unavailable)."""
+    out = subprocess.run(
+        ["openssl", "s_client", "-connect", f"{host}:{port}", "-servername", host],
+        input=b"", capture_output=True, timeout=30,
+    ).stdout.decode("utf-8", errors="replace")
+    m = re.search(r"-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----", out, re.S)
+    return m.group(0) if m else None
+
+
+def _aia_issuer_url(pem: str) -> str | None:
+    """The AIA "CA Issuers" URL a certificate advertises for its issuer, via ``openssl x509`` (or None)."""
+    text = subprocess.run(
+        ["openssl", "x509", "-noout", "-text"], input=pem.encode(), capture_output=True, timeout=15,
+    ).stdout.decode("utf-8", errors="replace")
+    m = re.search(r"CA Issuers - URI:(\S+)", text)
+    return m.group(1) if m else None
+
+
+def _get_issuer_der(url: str, timeout: float = DEFAULT_TIMEOUT_S) -> bytes:
+    """Fetch an AIA issuer cert (DER) over plain HTTP, NOT following a redirect into a broken-TLS mirror.
+
+    The Let's Encrypt AIA hosts 302-redirect ``http -> https`` for the root, and that https endpoint's
+    cert fails hostname verification (VERIFIED on the box). We never need TLS to fetch a public
+    certificate, so we refuse the redirect and re-fetch the target over plain http instead.
     """
-    def _run(args: list[str], stdin: bytes) -> str:
-        return subprocess.run(args, input=stdin, capture_output=True, timeout=30).stdout.decode(
-            "utf-8", errors="replace"
-        )
+    class _NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, *a: Any, **k: Any) -> None:  # do not auto-follow
+            return None
 
-    leaf_out = _run(["openssl", "s_client", "-connect", f"{host}:{port}", "-servername", host], b"")
-    m = re.search(r"-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----", leaf_out, re.S)
-    if not m:
-        return []
-    chain: list[str] = []
-    cur = m.group(0)
-    for _ in range(max_hops):
-        text = _run(["openssl", "x509", "-noout", "-text"], cur.encode())
-        aia = re.search(r"CA Issuers - URI:(\S+)", text)
-        if not aia:
-            break
-        der = urllib.request.urlopen(aia.group(1), timeout=DEFAULT_TIMEOUT_S).read()
-        cur = ssl.DER_cert_to_PEM_cert(der)
-        chain.append(cur)
-    return chain
+    opener = urllib.request.build_opener(_NoRedirect)
+    try:
+        return opener.open(url, timeout=timeout).read()
+    except urllib.error.HTTPError as exc:
+        if exc.code in (301, 302, 303, 307, 308):
+            loc = exc.headers.get("Location", "")
+            if loc.startswith("https://"):
+                loc = "http://" + loc[len("https://"):]  # a cert needs no TLS to download
+            return urllib.request.urlopen(loc, timeout=timeout).read()
+        raise
 
 
 def _ochem_ssl_context() -> ssl.SSLContext:
-    """A verifying SSL context that also trusts the AIA-completed chain ochem.eu omits (cached once).
+    """A VERIFYING context completed with the intermediate(s) ochem.eu omits (built once, cached).
 
-    Verification stays ON (``create_default_context``); we only ADD the intermediate/root certs the
-    server failed to send, so a real MITM (wrong leaf) is still rejected. Built once per process and
-    cached. If AIA completion fails, returns the plain default context (which still works anywhere the
-    server's chain or the local store is already complete).
+    ochem.eu presents only its leaf cert and omits the Let's Encrypt intermediate; browsers/curl repair
+    this by AIA-fetching, Python's ``ssl`` does not, so verification fails "unable to get local issuer
+    certificate" on the laptop AND the box. We walk the leaf's AIA chain, adding ONE issuer at a time and
+    re-probing the handshake after each, and STOP the moment it verifies - so we add only the missing
+    intermediates and never over-reach to the (redirect-broken) root the local store already trusts.
+    Verification is never disabled: a wrong leaf is still rejected. Falls back to the plain default
+    context if openssl is unavailable or the walk fails.
     """
     global _SSL_CTX
     if _SSL_CTX is not None:
         return _SSL_CTX
     ctx = ssl.create_default_context()
+    if _handshake_verifies(ctx):  # server chain or local store already complete
+        _SSL_CTX = ctx
+        return ctx
     try:
-        chain = _fetch_aia_chain()
-        if chain:
-            ctx.load_verify_locations(cadata="".join(chain))
+        cur = _leaf_pem()
+        added: list[str] = []
+        for _ in range(5):
+            if cur is None:
+                break
+            url = _aia_issuer_url(cur)
+            if not url:
+                break
+            cur = ssl.DER_cert_to_PEM_cert(_get_issuer_der(url))
+            added.append(cur)
+            probe = ssl.create_default_context()
+            probe.load_verify_locations(cadata="".join(added))
+            if _handshake_verifies(probe):
+                _SSL_CTX = probe
+                return probe
     except Exception:
         pass  # fall back to the default verifying context; never disable verification
     _SSL_CTX = ctx
