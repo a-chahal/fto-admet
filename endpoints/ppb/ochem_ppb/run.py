@@ -78,6 +78,9 @@ import hashlib
 import json
 import math
 import os
+import re
+import ssl
+import subprocess
 import sys
 import time
 import urllib.error
@@ -112,6 +115,10 @@ PREDICTIONS_KEYS = ("predictions", "results", "rows", "predicted")
 VALUE_KEYS = ("prediction", "value", "predicted", "result")  # holds the PPB value in LOGIT units
 ACCURACY_KEYS = ("accuracy", "error", "std", "predictionError", "rmse")  # accuracy/error estimate
 DM_KEYS = ("dm", "distanceToModel", "distance_to_model", "AD", "applicabilityDomain")  # DM / AD distance
+AD_BOOL_KEYS = ("insideAD", "inside_ad", "inAD", "in_domain")  # native in/out-of-domain boolean (VERIFIED live)
+# Nested per-molecule -> per-property shape (VERIFIED live 2026-07): getPrediction.do returns
+#   predictions:[ {moleculeID, smiles, predictions:[ {value, unit, accuracy, dm, insideAD, ...} ]} ]
+# so the actual value/accuracy/dm/insideAD live one level DOWN, inside each molecule's own `predictions`.
 # Status strings that mean "still running" (poll again) vs anything else = terminal.
 PENDING_STATUSES = frozenset({"pending", "queued", "running", "in_progress", "processing", "0"})
 
@@ -177,18 +184,96 @@ def _f(value: Any) -> float | None:
     return f if f == f and f not in (float("inf"), float("-inf")) else None
 
 
+def _coerce_bool(value: Any) -> bool | None:
+    """Coerce a native in-domain signal to a bool, or ``None`` if absent/unrecognized.
+
+    OCHEM returns ``insideAD`` as a JSON bool, but tolerate string spellings ("true"/"false") too.
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        v = value.strip().lower()
+        if v in ("true", "1", "yes"):
+            return True
+        if v in ("false", "0", "no"):
+            return False
+    return None
+
+
 # ==================================================================================================
 # Transport: a single injectable primitive (`_transport`) so the whole client is trivially mockable.
 # ==================================================================================================
+OCHEM_HOST = "ochem.eu"
+_SSL_CTX: ssl.SSLContext | None = None
+
+
+def _fetch_aia_chain(host: str = OCHEM_HOST, port: int = 443, max_hops: int = 5) -> list[str]:
+    """Return the issuer-certificate chain ``host`` OMITS, fetched via each cert's AIA "CA Issuers" URL.
+
+    VERIFIED live (2026-07): ochem.eu presents ONLY its leaf certificate and does not send the Let's
+    Encrypt intermediate. curl/browsers complete the chain by following the leaf's AIA (Authority
+    Information Access) "CA Issuers" URL; Python's ``ssl`` does not AIA-fetch, so verification fails with
+    "unable to get local issuer certificate" (on the laptop AND the box). We reproduce the browser
+    behaviour: pull the leaf via ``openssl s_client``, then walk each cert's AIA URL up the chain
+    (leaf -> intermediate(s) -> root), returning the PEMs to add to the trust store. Rotation-proof: it
+    follows whatever AIA the current cert advertises rather than pinning a specific intermediate.
+    Returns ``[]`` if openssl is unavailable or any step fails (caller falls back to the default context).
+    """
+    def _run(args: list[str], stdin: bytes) -> str:
+        return subprocess.run(args, input=stdin, capture_output=True, timeout=30).stdout.decode(
+            "utf-8", errors="replace"
+        )
+
+    leaf_out = _run(["openssl", "s_client", "-connect", f"{host}:{port}", "-servername", host], b"")
+    m = re.search(r"-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----", leaf_out, re.S)
+    if not m:
+        return []
+    chain: list[str] = []
+    cur = m.group(0)
+    for _ in range(max_hops):
+        text = _run(["openssl", "x509", "-noout", "-text"], cur.encode())
+        aia = re.search(r"CA Issuers - URI:(\S+)", text)
+        if not aia:
+            break
+        der = urllib.request.urlopen(aia.group(1), timeout=DEFAULT_TIMEOUT_S).read()
+        cur = ssl.DER_cert_to_PEM_cert(der)
+        chain.append(cur)
+    return chain
+
+
+def _ochem_ssl_context() -> ssl.SSLContext:
+    """A verifying SSL context that also trusts the AIA-completed chain ochem.eu omits (cached once).
+
+    Verification stays ON (``create_default_context``); we only ADD the intermediate/root certs the
+    server failed to send, so a real MITM (wrong leaf) is still rejected. Built once per process and
+    cached. If AIA completion fails, returns the plain default context (which still works anywhere the
+    server's chain or the local store is already complete).
+    """
+    global _SSL_CTX
+    if _SSL_CTX is not None:
+        return _SSL_CTX
+    ctx = ssl.create_default_context()
+    try:
+        chain = _fetch_aia_chain()
+        if chain:
+            ctx.load_verify_locations(cadata="".join(chain))
+    except Exception:
+        pass  # fall back to the default verifying context; never disable verification
+    _SSL_CTX = ctx
+    return ctx
+
+
 def _transport(url: str, *, timeout: float = DEFAULT_TIMEOUT_S) -> str:
     """The one network primitive: GET ``url`` and return the response body as text.
 
     Every HTTP call in this module goes through here, so a test monkeypatches exactly this one function
-    to drive the submit -> poll -> ready sequence with no network. Kept pure-stdlib (``urllib``) so the
-    api-model needs no third-party dependency.
+    to drive the submit -> poll -> ready sequence with no network. Kept pure-stdlib (``urllib`` + ``ssl``);
+    for ``https://ochem.eu`` it uses :func:`_ochem_ssl_context`, which completes the chain the server
+    omits WITHOUT disabling verification (see that function). No third-party dependency.
     """
     req = urllib.request.Request(url, headers={"Accept": "application/json, text/xml, */*"})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 - fixed https OCHEM host
+    context = _ochem_ssl_context() if url.lower().startswith(f"https://{OCHEM_HOST}") else None
+    with urllib.request.urlopen(req, timeout=timeout, context=context) as resp:  # noqa: S310 - fixed OCHEM host
         return resp.read().decode("utf-8", errors="replace")
 
 
@@ -279,13 +364,20 @@ def parse_service_response(text: str) -> dict[str, Any]:
     if isinstance(raw_preds, list):
         for item in raw_preds:
             if isinstance(item, dict):
+                # VERIFIED live shape: each per-molecule item carries its own nested `predictions`
+                # list holding the actual value/accuracy/dm/insideAD (one entry per predicted property;
+                # PPB is single-property so we take the first). Fall back to reading the item directly
+                # for the flat shape (older envelope + the unit test), so this stays a strict superset.
+                nested = _first_key(item, PREDICTIONS_KEYS)
+                src = nested[0] if isinstance(nested, list) and nested and isinstance(nested[0], dict) else item
                 predictions.append({
-                    "value": _f(_first_key(item, VALUE_KEYS)),
-                    "accuracy": _f(_first_key(item, ACCURACY_KEYS)),
-                    "dm": _f(_first_key(item, DM_KEYS)),
+                    "value": _f(_first_key(src, VALUE_KEYS)),
+                    "accuracy": _f(_first_key(src, ACCURACY_KEYS)),
+                    "dm": _f(_first_key(src, DM_KEYS)),
+                    "inside_ad": _first_key(src, AD_BOOL_KEYS),
                 })
             else:
-                predictions.append({"value": _f(item), "accuracy": None, "dm": None})
+                predictions.append({"value": _f(item), "accuracy": None, "dm": None, "inside_ad": None})
     elif raw_preds is None:
         # Single-molecule shape: the value/accuracy/dm may sit at the top level.
         top_value = _f(_first_key(doc, VALUE_KEYS))
@@ -294,6 +386,7 @@ def parse_service_response(text: str) -> dict[str, Any]:
                 "value": top_value,
                 "accuracy": _f(_first_key(doc, ACCURACY_KEYS)),
                 "dm": _f(_first_key(doc, DM_KEYS)),
+                "inside_ad": _first_key(doc, AD_BOOL_KEYS),
             })
 
     return {
@@ -396,15 +489,54 @@ def fetch_predictions(
     if _is_ready(submitted):
         return submitted
     task_id = submitted.get("task_id")
-    if not task_id:
-        raise RuntimeError(
-            f"OCHEM submit returned neither predictions nor a task id (status={submitted.get('status')!r}); "
-            f"the REST envelope may differ from the documented placeholder - see needs_aaran TODO"
+    # A genuine task id -> poll by taskId (the documented postModel/fetchModel-style async path).
+    # But VERIFIED live, getPrediction.do returns taskId "0" with status "pending" and re-serves the
+    # result on a repeat modelId+mol request (it caches server-side), so "0"/absent means re-request,
+    # not poll-by-taskId.
+    if task_id and task_id != "0":
+        return poll_until_ready(
+            task_id, endpoint=endpoint, poll_interval=poll_interval, max_wait=max_wait,
+            retries=retries, timeout=timeout, transport=transport, sleep=sleep, clock=clock,
         )
-    return poll_until_ready(
-        task_id, endpoint=endpoint, poll_interval=poll_interval, max_wait=max_wait,
-        retries=retries, timeout=timeout, transport=transport, sleep=sleep, clock=clock,
+    return poll_by_resubmit(
+        smiles_list, model_id=model_id, endpoint=endpoint, poll_interval=poll_interval,
+        max_wait=max_wait, retries=retries, timeout=timeout, transport=transport, sleep=sleep, clock=clock,
     )
+
+
+def poll_by_resubmit(
+    smiles_list: list[str],
+    *,
+    model_id: int = MODEL_ID,
+    endpoint: str = PREDICTION_ENDPOINT,
+    poll_interval: float = DEFAULT_POLL_INTERVAL_S,
+    max_wait: float = DEFAULT_MAX_WAIT_S,
+    retries: int = DEFAULT_RETRIES,
+    timeout: float = DEFAULT_TIMEOUT_S,
+    transport: Callable[..., str] = _transport,
+    sleep: Callable[[float], None] = time.sleep,
+    clock: Callable[[], float] = time.monotonic,
+) -> dict[str, Any]:
+    """Poll by RE-REQUESTING modelId+mol until ready or ``max_wait`` (getPrediction.do caches server-side).
+
+    This is the real getPrediction.do path (taskId is always "0"): the service queues on first request and
+    serves the cached result on repeat requests for the same molecule. Raises ``TimeoutError`` if it never
+    reaches ready. Injectable ``sleep``/``clock``/``transport`` keep it deterministic under test.
+    """
+    start = clock()
+    while True:
+        sleep(poll_interval)
+        parsed = submit(
+            smiles_list, model_id=model_id, endpoint=endpoint,
+            retries=retries, timeout=timeout, transport=transport, sleep=sleep,
+        )
+        if _is_ready(parsed):
+            return parsed
+        if clock() - start >= max_wait:
+            raise TimeoutError(
+                f"OCHEM getPrediction.do did not return a result after {max_wait:.0f}s "
+                f"(last status={parsed.get('status')!r})"
+            )
 
 
 # ==================================================================================================
@@ -474,18 +606,23 @@ def record_for(rec: dict[str, Any], prediction: dict[str, Any] | None) -> dict[s
 
     accuracy = _f(prediction.get("accuracy"))
     dm = _f(prediction.get("dm"))
+    inside_ad = _coerce_bool(prediction.get("inside_ad"))
     # Native ASNN uncertainty into the reserved envelope. DM is a distance (unbounded), not a 0-1 index,
-    # and the AD *rule* is DEFERRED (CLAUDE.md §4a), so it goes in `extra`, NOT `ad_index`; likewise the
-    # accuracy/error estimate is in LOGIT units (same space as the raw prediction) and is kept in `extra`
-    # with that unit noted, rather than forced into a %-space field.
+    # and the DM->in/out-of-domain *rule* is DEFERRED (CLAUDE.md §4a), so DM stays in `extra`, NOT
+    # `ad_index`. The service ALSO returns its own `insideAD` boolean (VERIFIED live) - that is the model's
+    # native in/out-of-domain call, exactly what `ad_in_domain` reserves (schemas.py), so it is routed
+    # there directly (no threshold invented). The accuracy/error estimate is in LOGIT units (same space as
+    # the raw prediction) and is kept in `extra` with that unit noted, rather than forced into a %-space field.
     uncertainty: dict[str, Any] | None = None
-    if accuracy is not None or dm is not None:
+    if accuracy is not None or dm is not None or inside_ad is not None:
         uncertainty = {
+            "ad_in_domain": inside_ad,
             "extra": {
                 "distance_to_model": dm,
                 "accuracy_error_logit": accuracy,
-                "note": "ASNN native DM + accuracy; AD threshold policy DEFERRED (F-7/CLAUDE.md §4a)",
-            }
+                "inside_ad": inside_ad,
+                "note": "ASNN native DM + accuracy + insideAD; DM->AD threshold policy DEFERRED (F-7/CLAUDE.md §4a)",
+            },
         }
 
     return {
