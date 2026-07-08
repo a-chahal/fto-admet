@@ -62,10 +62,13 @@ ADMET_AI_KEY = "PPBR_AZ"  # admet_ai (t21): plasma-protein-binding rate, PERCENT
 # "FuB"; the t45 brief names it "FuB_pred". Accept both so a rename on either side does not silently drop
 # the source (the inversion 1 - FuB is what matters, not the exact key).
 OPERA_FUB_KEYS: tuple[str, ...] = ("FuB", "FuB_pred")
-# OCHEM PPB (t36) emits % bound. Its exact emitted key is UNVERIFIED (F-7; the t36 adapter is not live
-# yet), so a documented candidate set is tried in order. RECONCILE with the t36 adapter's real key once
-# it lands; do NOT treat this list as a verified contract.
+# OCHEM PPB (t36) emits % bound. VERIFIED from a live getPrediction.do run (2026-07, modelId 1121): the
+# adapter's emitted key is ``ppb_percent_bound`` (%, UP = more bound), alongside a ``fraction_bound`` on
+# the common axis. The percent key is listed FIRST so it is the one read (then /100). The older
+# pre-live candidates are kept as tolerant fallbacks. NOTE: ``fraction_bound`` is deliberately NOT in this
+# %-scale set - it is already a fraction, so dividing it by 100 would be a 100x unit error.
 OCHEM_PCT_BOUND_KEYS: tuple[str, ...] = (
+    "ppb_percent_bound",  # verified live (t36 adapter): percent bound
     "PPB",
     "ppb",
     "percent_bound",
