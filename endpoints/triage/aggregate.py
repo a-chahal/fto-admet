@@ -1,37 +1,19 @@
 #!/usr/bin/env python
-"""triage aggregator - the funnel-entry generalist summary. FLAGS ONLY, no kills.
+"""triage aggregator - the funnel-entry generalist read-out. CONTEXT ONLY.
 
-Contract (task t51, CLAUDE.md §2, IO_SPEC §2 "triage"/§1 #1-#3, SETTLED §7 "Phase 1 - flags only,
-no kills here"): this is the FIRST thing a molecule meets in the funnel. It runs in the core env (no
-box, no GPU) and summarizes the cross-cutting generalist(s) into a compact per-property flag table:
+Triage is not a scientific endpoint in its own right: it is the funnel entry that surfaces the
+cross-cutting generalist(s) so the real endpoints can consume their heads. It is modeled as an endpoint
+purely for code consistency (the same ``aggregate(molecules) -> EndpointResult`` contract as every other
+endpoint), but it does NO scoring, NO consensus, NO uncertainty, and NO gate.
 
-    model       role                                     native confidence signal
-    -----       ----                                     -------------------------
-    admet_ai    BROAD baseline (ADMET-AI v2)             none (INDIRECT: cross-model spread only)
+With admetlab3 removed there is exactly ONE generalist (``admet_ai``), so there is nothing to cross-check.
+This aggregator therefore just EXPOSES admet_ai's usable heads verbatim, per molecule. The one guard is
+F-17: the two worse-than-the-mean ADMET-AI heads (``VDss_Lombardo`` / ``Half_Life_Obach``) are never
+surfaced (the adapter already quarantines them in ``raw``; this is belt-and-braces).
 
-The headline design rule (task t51, SETTLED §7): **triage FLAGS, it never KILLS.** No threshold here
-promotes or rejects a molecule; there is no pass/fail verdict, no gate, no kill. Every field this
-aggregator emits is a routing hint (a flag), and every ``PropertyFlag.is_gate`` is explicitly False.
-
-UNCERTAINTY = CROSS-MODEL SPREAD (INDIRECT), per the task and IO_SPEC §1 #1: where generalists that
-report the SAME property DIVERGE, the divergence flag is raised. A single generalist is NEVER authority
-(task t51 landmine): a property reported by exactly one model is marked ``single_source`` (not
-cross-checked), never "confident". NOTE: with admetlab3 removed there is currently ONE generalist
-(admet_ai), so every property is ``single_source`` and the spread machinery is dormant until a second
-independent generalist is added; the mechanism is kept because that is the funnel-entry design. Reads are
-matched across models by SHARED canonical key: ``admet_ai`` heads are canonical named columns (``hERG`` /
-``BBB_Martins`` / the CYP heads / ...), read as emitted (IO_SPEC §1 #1).
-
-EXCLUSIONS (task t51 / F-17): ADMET-AI's ``VDss_Lombardo`` and ``Half_Life_Obach`` are already absent
-from ``endpoint_values`` (the t21 adapter quarantines them in ``raw``). This aggregator ONLY reads
-``endpoint_values`` and additionally guards those two names, so they can never be resurrected here.
-
-DEFERRED (CLAUDE.md §4a; wired to a documented boundary, never invented):
-  - The divergence threshold on probability-scale values is a coarse TRIAGE default; the calibrated
-    AD / decision policy that would turn a flag into a promote/reject call is DEFERRED.
-  - A numeric divergence cut for NON-probability scales (regression heads) needs per-property units and
-    calibration -> the raw spread is recorded but does NOT raise a flag on those scales (DEFERRED).
-  - The ADMET-AI VDss/half-life exclusion (F-17) is honored by only reading ``endpoint_values``.
+If a second independent generalist is ever added, cross-model spread would belong here again; until then,
+keep it a thin pass-through. Every real endpoint's aggregator reads admet_ai's heads it needs directly
+(``ev.get("hERG")`` etc.) via registry membership - it does not go through this triage view.
 """
 
 from __future__ import annotations
@@ -41,33 +23,20 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from core.aggregate import normalize_molecules
 from core.models import Endpoint, ModelName
 from core.schemas import OutputRecord
 
-# --------------------------------------------------------------------------------------------------
-# The two cross-cutting generalists this triage view summarizes (IO_SPEC §1 #1-#2). Read by model
-# identity, never by folder. A record from any other model is ignored (triage is generalist-only).
-# --------------------------------------------------------------------------------------------------
-GENERALISTS: frozenset[ModelName] = frozenset(
-    {ModelName.admet_ai}
-)
+# The cross-cutting generalist(s) this triage view surfaces. A record from any other model is ignored
+# (triage is generalist-only); the real endpoints read admet_ai's heads directly by registry membership.
+GENERALISTS: frozenset[ModelName] = frozenset({ModelName.admet_ai})
 
-# ADMET-AI heads the model itself reports as worse-than-the-mean (F-17). Already absent from
-# endpoint_values (t21 quarantines them in raw); guarded here too so they can NEVER be resurrected.
+# ADMET-AI heads the model itself reports as worse-than-the-mean (F-17). Already quarantined in the
+# adapter's ``raw``; guarded here too so they can NEVER be surfaced.
 EXCLUDED_R2_NEGATIVE: frozenset[str] = frozenset({"VDss_Lombardo", "Half_Life_Obach"})
 
-# Coarse TRIAGE divergence threshold for probability-scale values (all reads in [0, 1]). Two generalists
-# whose probabilities straddle a gap this wide are "divergent". This is a documented heuristic, not a
-# calibrated cut (the calibrated AD/decision policy is DEFERRED, CLAUDE.md §4a).
-PROB_SPREAD_FLAG = 0.4
-
-# Confidence read labels (a routing hint, NEVER a gate). "single_source" is deliberately distinct from
-# "ok": a single generalist is never authority (task t51 landmine), so it is not "confident".
-CONF_LOW = "low"                    # generalists diverge, or a native low-confidence signal is present
-CONF_OK = "ok"                      # >= 2 generalists agree and no native low-confidence signal
-CONF_SINGLE = "single_source"       # only one generalist reports it -> not cross-checked, not authority
-CONF_NONE = "none"                  # no numeric value to read
-
+# The scalar types an ``endpoint_values`` head can carry (mirrors core.schemas.OutputRecord).
+Scalar = float | int | str | bool | None
 
 
 def _as_output_record(rec: Any) -> OutputRecord:
@@ -77,259 +46,56 @@ def _as_output_record(rec: Any) -> OutputRecord:
     return OutputRecord.model_validate(rec)
 
 
-def _scalar(value: Any) -> float | int | bool | None:
-    """Coerce an endpoint value to a JSON-safe scalar for the flag table; non-numeric strings -> None value."""
-    if value is None or isinstance(value, (bool, int, float)):
-        return value
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def _numeric(value: Any) -> float | None:
-    """The comparable numeric view of a read's value for spread (bool -> 0/1); None if not numeric."""
-    if isinstance(value, bool):
-        return float(value)
-    if isinstance(value, (int, float)):
-        return float(value)
-    return None
-
-
-class GeneralistRead(BaseModel):
-    """One generalist's read of one property: the raw value + any native confidence signal it carried.
-
-    The value itself is NEVER averaged across models (only same-scale spread is computed, see below).
-    """
-
-    model_config = ConfigDict(extra="forbid")
-
-    model: ModelName
-    field: str
-    value: float | int | bool | None
-
-
-class PropertyFlag(BaseModel):
-    """One row of the triage flag table: one property, every generalist that reported it, and the flags.
-
-    ``spread`` is max-min across the numeric reads (``None`` for a single read or non-numeric values).
-    ``prob_scale`` records whether every read sat in [0, 1] (the only scale on which the divergence flag
-    fires; a non-probability spread is recorded but does NOT raise a flag - DEFERRED). ``divergent`` is
-    the raised uncertainty flag (cross-model spread). ``confidence`` folds spread + native signals into a
-    routing label. ``is_gate`` is always False and stated explicitly: triage flags, it never kills.
-    """
-
-    model_config = ConfigDict(extra="forbid")
-
-    property: str
-    reads: list[GeneralistRead]
-    n_models: int
-    spread: float | None = None
-    prob_scale: bool = False
-    divergent: bool = False
-    confidence: str = CONF_NONE
-    is_gate: bool = False   # explicit: a triage flag NEVER terminates a molecule (SETTLED §7).
-    notes: list[str] = Field(default_factory=list)
-
-
 class MoleculeTriage(BaseModel):
-    """One molecule's funnel-entry triage view: the per-property flag table + a compact divergence summary."""
+    """One molecule's funnel-entry read: the generalist's usable heads, surfaced verbatim. No verdict.
+
+    ``present`` is True when a generalist record was in the bundle. ``values`` is admet_ai's
+    ``endpoint_values`` passed through unchanged, minus the F-17 heads. There is deliberately no
+    consensus / spread / confidence / gate field: triage is context that feeds the real endpoints.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     mol_id: str
     present: bool
-    properties: list[PropertyFlag] = Field(default_factory=list)
-    n_properties: int = 0
-    divergent_properties: list[str] = Field(default_factory=list)
-    notes: list[str] = Field(default_factory=list)
+    values: dict[str, Scalar] = Field(default_factory=dict)
 
 
 class EndpointResult(BaseModel):
-    """The triage result: a per-molecule generalist flag table. FLAGS ONLY - deliberately no gate/kill.
-
-    There is intentionally NO promote/reject scalar or pass/fail verdict anywhere: triage routes, it does
-    not terminate. The aggregator owns its own result shape (an aggregator task may not touch ``core``).
-    """
+    """The triage result: per-molecule raw generalist reads. Context only - no consensus, no gate."""
 
     model_config = ConfigDict(extra="forbid")
 
     endpoint: Endpoint = Endpoint.triage
     quantity: str = (
-        "funnel-entry generalist summary: a per-property flag table over ADMET-AI v2. "
-        "Uncertainty = cross-model spread (divergent generalists raise the flag); a single "
-        "generalist is never authority. FLAGS ONLY - no threshold, gate, kill, or pass/fail verdict."
+        "funnel-entry generalist reads (ADMET-AI heads) surfaced verbatim; context that feeds the real "
+        "endpoints. No consensus, no uncertainty, no gate."
     )
     molecules: list[MoleculeTriage]
     n_molecules: int
-    notes: list[str] = Field(default_factory=list)
-    deferred: list[str] = Field(default_factory=list)
 
 
-def _reads_for_record(rec: OutputRecord) -> list[tuple[str, GeneralistRead]]:
-    """Extract ``(canonical_property, GeneralistRead)`` pairs from one generalist record.
-
-    Non-generalist records are ignored (triage is generalist-only). The two R^2-negative ADMET-AI heads
-    are guarded out even if a stray adapter ever emitted them (F-17).
-    """
-    if rec.model not in GENERALISTS:
-        return []
-
-    ev = rec.endpoint_values or {}
-    out: list[tuple[str, GeneralistRead]] = []
-
-    for key, val in ev.items():
-        if key in EXCLUDED_R2_NEGATIVE:  # never resurrect VDss_Lombardo / Half_Life_Obach (F-17)
+def _triage_for(mol_id: str, records: Sequence[Any]) -> MoleculeTriage:
+    """Surface one molecule's generalist heads verbatim (minus F-17). Non-generalist records are ignored."""
+    values: dict[str, Scalar] = {}
+    present = False
+    for raw in records:
+        rec = _as_output_record(raw)
+        if rec.model not in GENERALISTS:
             continue
-        out.append((key, GeneralistRead(model=rec.model, field=key, value=_scalar(val))))
-    return out
+        present = True
+        for key, val in (rec.endpoint_values or {}).items():
+            if key in EXCLUDED_R2_NEGATIVE:  # F-17: never surface VDss_Lombardo / Half_Life_Obach
+                continue
+            values[key] = val
+    return MoleculeTriage(mol_id=mol_id, present=present, values=values)
 
 
-def _property_flag(prop: str, reads: list[GeneralistRead]) -> PropertyFlag:
-    """Build one flag-table row: compute cross-model spread, the divergence flag, and the confidence read.
+def aggregate(molecules: Mapping[str, Sequence[Any]] | Sequence[Any]) -> EndpointResult:
+    """Surface each molecule's generalist (ADMET-AI) heads verbatim. Context only - no scoring, no gate.
 
-    Spread and the divergence flag are computed ONLY across same-scale numeric reads. On the probability
-    scale (all reads in [0, 1]) a spread wider than ``PROB_SPREAD_FLAG`` raises ``divergent``. On any other
-    numeric scale the spread is recorded but does NOT raise a flag (a calibrated per-property cut is
-    DEFERRED). The confidence read: ``low`` if divergent OR a native low-confidence signal is present;
-    ``ok`` if >= 2 generalists agree; ``single_source`` if only one generalist reports it (never authority).
+    ``molecules`` accepts the shared aggregator input shapes (see ``core.aggregate.normalize_molecules``);
+    each molecule's bundle is a list of its model ``OutputRecord``s (or their plain-dict form).
     """
-    numerics = [n for n in (_numeric(r.value) for r in reads) if n is not None]
-    n_models = len(reads)
-
-    spread: float | None = None
-    prob_scale = False
-    divergent = False
-    if len(numerics) >= 2:
-        spread = max(numerics) - min(numerics)
-        prob_scale = all(0.0 <= n <= 1.0 for n in numerics)
-        if prob_scale and spread > PROB_SPREAD_FLAG:
-            divergent = True
-
-    if not numerics:
-        confidence = CONF_NONE
-    elif divergent:
-        confidence = CONF_LOW
-    elif n_models >= 2:
-        confidence = CONF_OK
-    else:
-        confidence = CONF_SINGLE
-
-    notes: list[str] = []
-    if divergent:
-        notes.append(
-            f"cross-model spread {spread:.3f} (> {PROB_SPREAD_FLAG}) on the probability scale: the "
-            "generalists DIVERGE -> uncertainty flag raised (INDIRECT confidence signal)."
-        )
-    if spread is not None and not prob_scale:
-        notes.append(
-            "reads are on a non-probability scale: the numeric spread is recorded but does NOT raise a "
-            "divergence flag (a calibrated per-property cut is DEFERRED, CLAUDE.md §4a)."
-        )
-    if confidence == CONF_SINGLE:
-        notes.append("only ONE generalist reports this property: a single generalist is never authority (not cross-checked).")
-
-    return PropertyFlag(
-        property=prop,
-        reads=reads,
-        n_models=n_models,
-        spread=spread,
-        prob_scale=prob_scale,
-        divergent=divergent,
-        confidence=confidence,
-        notes=notes,
-    )
-
-
-def _triage_for(mol_id: str, records: Sequence[OutputRecord]) -> MoleculeTriage:
-    """Assemble one molecule's funnel-entry flag table from its generalist records. FLAGS ONLY."""
-    grouped: dict[str, list[GeneralistRead]] = {}
-    for rec in records:
-        for prop, read in _reads_for_record(rec):
-            grouped.setdefault(prop, []).append(read)
-
-    # Deterministic order: property name, so the flag table is stable across runs.
-    props = [_property_flag(prop, grouped[prop]) for prop in sorted(grouped)]
-    divergent = [p.property for p in props if p.divergent]
-
-    notes = [
-        "funnel-entry triage: a per-property flag table over the generalists. FLAGS ONLY - nothing here "
-        "promotes, rejects, or kills a molecule (SETTLED §7).",
-    ]
-    if not props:
-        notes.append("no generalist (admet_ai) read present in the bundle.")
-    if divergent:
-        notes.append(f"{len(divergent)} propert{'y' if len(divergent) == 1 else 'ies'} flagged divergent (cross-model spread).")
-
-    return MoleculeTriage(
-        mol_id=mol_id,
-        present=bool(props),
-        properties=props,
-        n_properties=len(props),
-        divergent_properties=divergent,
-        notes=notes,
-    )
-
-
-def _normalize_molecules(
-    molecules: Mapping[str, Sequence[Any]] | Sequence[Any],
-) -> list[tuple[str, list[Any]]]:
-    """Normalize the accepted input shapes to ``[(mol_id, records), ...]`` (same contract as the other aggregators).
-
-    Accepts: a Mapping ``{mol_id: records}``; a sequence of ``(mol_id, records)`` pairs; a sequence of dicts
-    ``{"mol_id"|"id": ..., "records": [...]}``; or a bare sequence of record-lists (id defaults to a
-    positional ``mol_<i>``). A record-list is never mistaken for an ``(id, records)`` pair because a pair's
-    first element is a ``str`` while a record-list's first element is a record/dict.
-    """
-    if isinstance(molecules, Mapping):
-        return [(str(mid), list(recs)) for mid, recs in molecules.items()]
-
-    out: list[tuple[str, list[Any]]] = []
-    for i, item in enumerate(molecules):
-        if isinstance(item, Mapping) and "records" in item:
-            mid = item.get("mol_id") or item.get("id") or f"mol_{i}"
-            out.append((str(mid), list(item["records"])))
-        elif (
-            isinstance(item, (tuple, list))
-            and len(item) == 2
-            and isinstance(item[0], str)
-            and isinstance(item[1], (list, tuple))
-        ):
-            out.append((item[0], list(item[1])))
-        else:
-            out.append((f"mol_{i}", list(item)))
-    return out
-
-
-def aggregate(
-    molecules: Mapping[str, Sequence[Any]] | Sequence[Any],
-) -> EndpointResult:
-    """Summarize the three generalists into the funnel-entry triage flag table per molecule. FLAGS ONLY.
-
-    ``molecules`` is the compound set (see ``_normalize_molecules`` for accepted shapes); each molecule's
-    bundle is a list of its model ``OutputRecord``s. For each molecule the generalist reads are grouped by
-    canonical property; the uncertainty flag is raised where the generalists that share a property DIVERGE
-    (cross-model spread); a single generalist is never authority. There is deliberately no threshold, gate,
-    kill, or pass/fail verdict: triage routes, it never terminates a compound (SETTLED §7).
-    """
-    norm = _normalize_molecules(molecules)
-    mols = [_triage_for(mid, [_as_output_record(r) for r in raw_recs]) for mid, raw_recs in norm]
-
-    return EndpointResult(
-        molecules=mols,
-        n_molecules=len(mols),
-        notes=[
-            "triage is the funnel entry: a compact per-property flag table over ADMET-AI v2. "
-            "FLAGS ONLY - no kills at this stage (SETTLED §7).",
-            "uncertainty = cross-model spread (INDIRECT): divergent generalists raise the flag. A single "
-            "generalist is never authority; ADMET-AI VDss/half-life stay excluded (F-17).",
-            "with admetlab3 removed there is one generalist (admet_ai), so every property is currently "
-            "single_source; the spread machinery activates when a second independent generalist is added.",
-        ],
-        deferred=[
-            "the divergence threshold on the probability scale is a coarse TRIAGE default; the calibrated "
-            "AD / decision policy that would turn a flag into a promote/reject call is DEFERRED (CLAUDE.md §4a).",
-            "a numeric divergence cut for non-probability (regression) scales is DEFERRED: that spread is "
-            "surfaced, not thresholded.",
-        ],
-    )
+    mols = [_triage_for(mid, recs) for mid, recs in normalize_molecules(molecules)]
+    return EndpointResult(molecules=mols, n_molecules=len(mols))
