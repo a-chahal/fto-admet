@@ -232,8 +232,7 @@ def record_for(model: Any, rec: dict[str, Any], device: str) -> dict[str, Any]:
         if key not in EXCLUDED_R2_NEGATIVE and not key.endswith(_PERCENTILE_SUFFIX)
     }
 
-    # Keep the excluded heads (+ any percentile companion) visible but quarantined in raw so nothing
-    # downstream can promote them by accident.
+    # Keep the excluded heads (+ any percentile companion) visible but quarantined in raw so nothing downstream can promote them by accident.
     excluded: dict[str, Any] = {}
     for key in EXCLUDED_R2_NEGATIVE:
         if key in columns:

@@ -3,13 +3,12 @@
 
 Contract (task t51, CLAUDE.md §2, IO_SPEC §2 "triage"/§1 #1-#3, SETTLED §7 "Phase 1 - flags only,
 no kills here"): this is the FIRST thing a molecule meets in the funnel. It runs in the core env (no
-box, no GPU) and summarizes the three cross-cutting generalists into a compact per-property flag table:
+box, no GPU) and summarizes the two cross-cutting generalists into a compact per-property flag table:
 
     model       role                                     native confidence signal
     -----       ----                                     -------------------------
     admet_ai    BROAD baseline (ADMET-AI v2)             none (INDIRECT: cross-model spread only)
     admetlab3   BROAD (119 heads, DMPNN + descriptors)   per-endpoint high/low Youden confidence FLAG
-    openadmet   BROAD reference (CYP-strong)             per-prediction std (native sigma), DIRECT
 
 The headline design rule (task t51, SETTLED §7): **triage FLAGS, it never KILLS.** No threshold here
 promotes or rejects a molecule; there is no pass/fail verdict, no gate, no kill. Every field this
@@ -18,16 +17,13 @@ aggregator emits is a routing hint (a flag), and every ``PropertyFlag.is_gate`` 
 UNCERTAINTY = CROSS-MODEL SPREAD (INDIRECT), per the task and IO_SPEC §1 #1: where the generalists that
 report the SAME property DIVERGE, the divergence flag is raised. A single generalist is NEVER authority
 (task t51 landmine): a property reported by exactly one model is marked ``single_source`` (not
-cross-checked), never "confident". OpenADMET's native sigma and ADMETlab's high/low confidence flag FEED
-the confidence read on top of the spread signal (they are surfaced per property).
+cross-checked), never "confident". ADMETlab's high/low confidence flag FEEDS the confidence read on top
+of the spread signal (surfaced per property).
 
 CROSS-MODEL MATCHING, and an honest limit (F-6, NEEDS_AARAN). Cross-model spread can only be computed
 for properties the models report under the SAME canonical key. Here:
   - ``admet_ai`` heads are canonical named columns (``hERG`` / ``BBB_Martins`` / the CYP heads / ...),
     read as emitted (IO_SPEC §1 #1).
-  - ``openadmet`` uses the verified ``OADMET_PRED_{tag}_{taskname}`` / ``OADMET_STD_{tag}_{taskname}``
-    scheme (inference.py, IO_SPEC §1 #3): the ``STD`` value is paired to its ``PRED`` value as the native
-    sigma, and the canonical key is the ``PRED`` name minus the ``OADMET_PRED_`` prefix.
   - ``admetlab3``'s 119 literal column names are a build-time live read (F-6, NEEDS_AARAN): they are NOT
     hardcoded here. Its heads are read as emitted and surface as their own rows; a *semantic crosswalk*
     that would let an ADMETlab head share a canonical key with an ADMET-AI head needs that captured header
@@ -44,8 +40,8 @@ DEFERRED (CLAUDE.md §4a; wired to a documented boundary, never invented):
     AD / decision policy that would turn a flag into a promote/reject call is DEFERRED.
   - A numeric divergence cut for NON-probability scales (regression heads) needs per-property units and
     calibration -> the raw spread is recorded but does NOT raise a flag on those scales (DEFERRED).
-  - An absolute OpenADMET sigma -> low-confidence cutoff is DEFERRED: sigma is surfaced as context; only
-    ADMETlab's explicit high/low flag drives a native low-confidence mark.
+  - Only ADMETlab's explicit high/low flag drives a native low-confidence mark (a calibrated cutoff on
+    any other native signal is DEFERRED).
   - The ADMET-AI VDss/half-life exclusion (F-17) is honored by only reading ``endpoint_values``.
 """
 
@@ -60,18 +56,12 @@ from core.models import Endpoint, ModelName
 from core.schemas import OutputRecord
 
 # --------------------------------------------------------------------------------------------------
-# The three cross-cutting generalists this triage view summarizes (IO_SPEC §1 #1-#3). Read by model
+# The two cross-cutting generalists this triage view summarizes (IO_SPEC §1 #1-#2). Read by model
 # identity, never by folder. A record from any other model is ignored (triage is generalist-only).
 # --------------------------------------------------------------------------------------------------
 GENERALISTS: frozenset[ModelName] = frozenset(
-    {ModelName.admet_ai, ModelName.admetlab3, ModelName.openadmet}
+    {ModelName.admet_ai, ModelName.admetlab3}
 )
-
-# OpenADMET's verified column scheme (IO_SPEC §1 #3, inference.py): a PRED value and its paired STD
-# (native per-prediction sigma). We strip the prefix to recover the canonical property key and pair
-# STD -> PRED to attach the sigma. Acquisition columns (OADMET_{ACQFXN}_...) are neither PRED nor STD.
-OADMET_PRED_PREFIX = "OADMET_PRED_"
-OADMET_STD_PREFIX = "OADMET_STD_"
 
 # ADMET-AI heads the model itself reports as worse-than-the-mean (F-17). Already absent from
 # endpoint_values (t21 quarantines them in raw); guarded here too so they can NEVER be resurrected.
@@ -111,18 +101,6 @@ def _scalar(value: Any) -> float | int | bool | None:
         return None
 
 
-def _as_float(value: Any) -> float | None:
-    """Best-effort float for a native sigma; None if it is missing or non-numeric (e.g. a single-model NaN)."""
-    if value is None or isinstance(value, bool):
-        return None
-    try:
-        f = float(value)
-    except (TypeError, ValueError):
-        return None
-    # A NaN sigma (OpenADMET single models emit NaN, no native uncertainty) is treated as absent.
-    return None if f != f else f
-
-
 def _numeric(value: Any) -> float | None:
     """The comparable numeric view of a read's value for spread (bool -> 0/1); None if not numeric."""
     if isinstance(value, bool):
@@ -135,9 +113,8 @@ def _numeric(value: Any) -> float | None:
 class GeneralistRead(BaseModel):
     """One generalist's read of one property: the raw value + any native confidence signal it carried.
 
-    ``native_sigma`` is OpenADMET's paired ``OADMET_STD_*`` (higher = less confident; DIRECT).
-    ``native_conf_flag`` is ADMETlab's per-endpoint Youden high/low flag. Both are surfaced as context;
-    the value itself is NEVER averaged across models (only same-scale spread is computed, see below).
+    ``native_conf_flag`` is ADMETlab's per-endpoint Youden high/low flag, surfaced as context; the value
+    itself is NEVER averaged across models (only same-scale spread is computed, see below).
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -145,7 +122,6 @@ class GeneralistRead(BaseModel):
     model: ModelName
     field: str
     value: float | int | bool | None
-    native_sigma: float | None = None
     native_conf_flag: str | None = None
 
 
@@ -196,8 +172,8 @@ class EndpointResult(BaseModel):
 
     endpoint: Endpoint = Endpoint.triage
     quantity: str = (
-        "funnel-entry generalist summary: a per-property flag table over ADMET-AI v2 / ADMETlab 3.0 / "
-        "OpenADMET. Uncertainty = cross-model spread (divergent generalists raise the flag); a single "
+        "funnel-entry generalist summary: a per-property flag table over ADMET-AI v2 / ADMETlab 3.0. "
+        "Uncertainty = cross-model spread (divergent generalists raise the flag); a single "
         "generalist is never authority. FLAGS ONLY - no threshold, gate, kill, or pass/fail verdict."
     )
     molecules: list[MoleculeTriage]
@@ -227,34 +203,14 @@ def _conf_flags(rec: OutputRecord) -> dict[str, str]:
 def _reads_for_record(rec: OutputRecord) -> list[tuple[str, GeneralistRead]]:
     """Extract ``(canonical_property, GeneralistRead)`` pairs from one generalist record.
 
-    Non-generalist records are ignored (triage is generalist-only). OpenADMET's ``STD`` columns are paired
-    to their ``PRED`` value as the native sigma and are never treated as their own property. The two
-    R^2-negative ADMET-AI heads are guarded out even if a stray adapter ever emitted them (F-17).
+    Non-generalist records are ignored (triage is generalist-only). The two R^2-negative ADMET-AI heads
+    are guarded out even if a stray adapter ever emitted them (F-17).
     """
     if rec.model not in GENERALISTS:
         return []
 
     ev = rec.endpoint_values or {}
     out: list[tuple[str, GeneralistRead]] = []
-
-    if rec.model == ModelName.openadmet:
-        # Pair each STD (native sigma) to its PRED by the shared {tag}_{taskname} suffix.
-        std_by_key = {
-            k[len(OADMET_STD_PREFIX):]: v
-            for k, v in ev.items()
-            if k.startswith(OADMET_STD_PREFIX)
-        }
-        for key, val in ev.items():
-            if key.startswith(OADMET_STD_PREFIX):
-                continue  # consumed as a sigma, not a property of its own
-            if key.startswith(OADMET_PRED_PREFIX):
-                canon = key[len(OADMET_PRED_PREFIX):]
-                sigma = _as_float(std_by_key.get(canon))
-                out.append((canon, GeneralistRead(model=rec.model, field=key, value=_scalar(val), native_sigma=sigma)))
-            else:
-                # An acquisition or otherwise unprefixed column: surface it as its own read, no sigma.
-                out.append((key, GeneralistRead(model=rec.model, field=key, value=_scalar(val))))
-        return out
 
     conf_flags = _conf_flags(rec)
     for key, val in ev.items():
@@ -311,11 +267,6 @@ def _property_flag(prop: str, reads: list[GeneralistRead]) -> PropertyFlag:
         )
     if native_low:
         notes.append("a native low-confidence signal (ADMETlab Youden low flag) is present -> confidence = low.")
-    if any(r.native_sigma is not None for r in reads):
-        notes.append(
-            "OpenADMET native sigma surfaced as context; an absolute sigma -> low-confidence cutoff is "
-            "DEFERRED (CLAUDE.md §4a), so sigma feeds the read but does not itself set the flag."
-        )
     if confidence == CONF_SINGLE:
         notes.append("only ONE generalist reports this property: a single generalist is never authority (not cross-checked).")
 
@@ -347,7 +298,7 @@ def _triage_for(mol_id: str, records: Sequence[OutputRecord]) -> MoleculeTriage:
         "promotes, rejects, or kills a molecule (SETTLED §7).",
     ]
     if not props:
-        notes.append("no generalist (admet_ai / admetlab3 / openadmet) read present in the bundle.")
+        notes.append("no generalist (admet_ai / admetlab3) read present in the bundle.")
     if divergent:
         notes.append(f"{len(divergent)} propert{'y' if len(divergent) == 1 else 'ies'} flagged divergent (cross-model spread).")
 
@@ -409,18 +360,17 @@ def aggregate(
         molecules=mols,
         n_molecules=len(mols),
         notes=[
-            "triage is the funnel entry: a compact per-property flag table over ADMET-AI v2 / ADMETlab 3.0 "
-            "/ OpenADMET. FLAGS ONLY - no kills at this stage (SETTLED §7).",
+            "triage is the funnel entry: a compact per-property flag table over ADMET-AI v2 / ADMETlab 3.0. "
+            "FLAGS ONLY - no kills at this stage (SETTLED §7).",
             "uncertainty = cross-model spread (INDIRECT): divergent generalists raise the flag. A single "
             "generalist is never authority; ADMET-AI VDss/half-life stay excluded (F-17).",
-            "OpenADMET native sigma and ADMETlab's Youden high/low flag feed the confidence read on top of "
-            "the spread signal.",
+            "ADMETlab's Youden high/low flag feeds the confidence read on top of the spread signal.",
         ],
         deferred=[
             "the divergence threshold on the probability scale is a coarse TRIAGE default; the calibrated "
             "AD / decision policy that would turn a flag into a promote/reject call is DEFERRED (CLAUDE.md §4a).",
-            "a numeric divergence cut for non-probability (regression) scales, and an absolute OpenADMET "
-            "sigma -> low-confidence cutoff, are DEFERRED: those signals are surfaced, not thresholded.",
+            "a numeric divergence cut for non-probability (regression) scales is DEFERRED: that spread is "
+            "surfaced, not thresholded.",
             "a SEMANTIC cross-model name crosswalk (so an ADMETlab head can share a canonical key with an "
             "ADMET-AI head) needs ADMETlab's captured 119-column header (F-6, NEEDS_AARAN) and is NOT "
             "invented here; until then spread fires only where key names already coincide.",

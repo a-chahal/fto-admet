@@ -1,7 +1,7 @@
 """Unit tests for core.registry (the curated ModelSpec / REGISTRY contract).
 
 REGISTRY is the single source of truth dispatch and every aggregator key off (CLAUDE.md §2), so these
-tests pin: exactly 29 specs one-per-ModelName, endpoints as a non-empty frozenset subset of Endpoint,
+tests pin: exactly 28 specs one-per-ModelName, endpoints as a non-empty frozenset subset of Endpoint,
 the five cross-cutting sets from IO_SPEC §2, the None-env boundary for web-only + out-of-band models,
 the gpu/bulk flags, non-empty provenance, and immutability. Gate:
 ``pytest tests/test_registry.py``. Laptop / core env, no box, no GPU.
@@ -65,7 +65,7 @@ def test_registry_validate_passes():
 
 def test_one_spec_per_model_name():
     assert set(REGISTRY) == set(ModelName)
-    assert len(REGISTRY) == 29
+    assert len(REGISTRY) == 28
 
 
 def test_key_matches_spec_name():

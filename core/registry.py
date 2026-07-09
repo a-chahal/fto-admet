@@ -7,9 +7,10 @@ resolves a model's env + entrypoint here; each endpoint's ``aggregate.py`` selec
 ``pgp``) carry every endpoint their output feeds, not just their home folder (IO_SPEC §2).
 
 Immutability is the point: specs are a reviewed contract, so ``ModelSpec`` and ``Provenance`` are
-frozen dataclasses and ``REGISTRY`` is populated once at import. Counts are load-bearing: exactly 29
-specs, one per ``ModelName`` (SETTLED §5); the dropped/replaced upstreams (deephit, spielvogel,
-cardiodpi, fame3; CLAUDE.md §4) have no member and cannot appear.
+frozen dataclasses and ``REGISTRY`` is populated once at import. Counts are load-bearing: exactly 28
+specs, one per ``ModelName`` (SETTLED §5; openadmet removed as redundant with admet_ai); the
+dropped/replaced upstreams (deephit, spielvogel, cardiodpi, fame3; CLAUDE.md §4) have no member and
+cannot appear.
 
 Boundaries honored here:
 - Web-only tools (``watanabe_renal``, ``watanabe_pgp_brain``, ``protox``) and the out-of-band native
@@ -102,7 +103,6 @@ _CROSS_CUTTING: dict[ModelName, frozenset[Endpoint]] = {
 _ROWS: tuple[tuple[ModelName, Endpoint, bool, bool, str, bool], ...] = (
     (ModelName.admet_ai, Endpoint.triage, False, True, "CODE-PKG", True),
     (ModelName.admetlab3, Endpoint.triage, False, True, "CODE-API", True),
-    (ModelName.openadmet, Endpoint.triage, False, True, "CODE-PKG", True),
     (ModelName.bayesherg, Endpoint.herg, True, True, "CODE-PKG", True),
     (ModelName.cardiotox_net, Endpoint.herg, True, True, "CODE-PKG", True),
     (ModelName.ctoxpred2, Endpoint.herg, False, False, "CODE-PKG", True),
@@ -185,8 +185,8 @@ def registry_validate() -> None:
         missing = expected - keys
         extra = keys - expected
         raise RegistryError(f"REGISTRY keys != ModelName members (missing={missing}, extra={extra})")
-    if len(REGISTRY) != 29:
-        raise RegistryError(f"expected 29 specs, found {len(REGISTRY)}")
+    if len(REGISTRY) != 28:
+        raise RegistryError(f"expected 28 specs, found {len(REGISTRY)}")
 
     all_endpoints = set(Endpoint)
     for name, spec in REGISTRY.items():

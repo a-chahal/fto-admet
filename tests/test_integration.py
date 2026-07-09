@@ -7,7 +7,7 @@ drift is caught here (one fix) instead of poisoning every later smoke test. It t
 one to fix (this task BLOCKs and names the failing test).
 
 Coherence frozen here:
-- models <-> registry: ``ModelName`` and ``REGISTRY`` are a bijection (29 specs, one each).
+- models <-> registry: ``ModelName`` and ``REGISTRY`` are a bijection (28 specs, one each).
 - registry <-> Endpoint: every spec's ``endpoints`` is a non-empty subset of ``Endpoint``; the five
   cross-cutting sets match IO_SPEC §2; every endpoint is reachable by at least one bulk-loop model.
 - registry env boundary: web-only + OPERA + PBPK carry ``None`` env/entrypoint; every other model has
@@ -72,7 +72,7 @@ def test_registry_validate_is_green():
 
 def test_modelname_and_registry_are_a_bijection():
     assert set(REGISTRY) == set(ModelName)
-    assert len(REGISTRY) == len(ModelName) == 29
+    assert len(REGISTRY) == len(ModelName) == 28
     for name, spec in REGISTRY.items():
         assert spec.name == name, name
 

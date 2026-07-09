@@ -3,13 +3,12 @@
 Synthetic ``OutputRecord``-shaped inputs only (laptop, core env - no box, no GPU). They exercise the
 guarantees this endpoint exists to provide (task t51, IO_SPEC §1 #1-#3, SETTLED §7):
 
-- the three generalists (ADMET-AI v2 / ADMETlab 3.0 / OpenADMET) are summarized into a per-property
+- the two generalists (ADMET-AI v2 / ADMETlab 3.0) are summarized into a per-property
   flag table, keyed by canonical property;
 - uncertainty = CROSS-MODEL SPREAD: when generalists that share a property diverge, the flag is raised;
   when they agree, it is not;
 - a SINGLE generalist is never authority: a lone read is marked ``single_source``, not "ok";
-- OpenADMET's native sigma (paired ``OADMET_STD_*``) and ADMETlab's Youden high/low flag feed the
-  confidence read;
+- ADMETlab's Youden high/low flag feeds the confidence read;
 - FLAGS ONLY - there is no gate/kill anywhere (every ``is_gate`` is False; no promote/reject verdict);
 - ADMET-AI's excluded VDss/half-life heads stay absent and are never resurrected (F-17);
 - the accepted input shapes normalize the same way; missing generalists degrade gracefully.
@@ -50,23 +49,6 @@ def admetlab3_rec(heads: dict, conf_flags: dict | None = None) -> dict:
         "model": ModelName.admetlab3,
         "endpoint_values": dict(heads),
         "uncertainty": unc,
-        "raw": {},
-        "provenance": PROV,
-    }
-
-
-OADMET_TAG = "baseline"  # OpenADMET's {tag}; the canonical key keeps {tag}_{task} (tag not parseable out).
-
-
-def openadmet_rec(preds: dict, stds: dict | None = None) -> dict:
-    """An OpenADMET record using the verified OADMET_PRED_{tag}_{task} / OADMET_STD_{tag}_{task} scheme."""
-    ev: dict = {f"OADMET_PRED_{OADMET_TAG}_{k}": v for k, v in preds.items()}
-    if stds:
-        ev.update({f"OADMET_STD_{OADMET_TAG}_{k}": v for k, v in stds.items()})
-    return {
-        "model": ModelName.openadmet,
-        "endpoint_values": ev,
-        "uncertainty": None,
         "raw": {},
         "provenance": PROV,
     }
@@ -149,49 +131,6 @@ def test_non_probability_spread_is_recorded_but_does_not_raise_flag():
     assert logd.spread == 3.5
     assert logd.prob_scale is False
     assert logd.divergent is False
-
-
-# --------------------------------------------------------------------------------------------------
-# OpenADMET native sigma: paired STD, surfaced as context; NaN sigma treated as absent.
-# --------------------------------------------------------------------------------------------------
-def test_openadmet_pred_std_pairing_and_canonical_key():
-    """The PRED prefix is stripped; the {tag} stays in the canonical key (it is not reliably parseable)."""
-    recs = [openadmet_rec({"CYP3A4": 0.7}, {"CYP3A4": 0.15})]
-    mol = aggregate({"m": recs}).molecules[0]
-    cyp = _prop(mol, "baseline_CYP3A4")
-    assert cyp.reads[0].model == ModelName.openadmet
-    assert cyp.reads[0].value == 0.7
-    assert cyp.reads[0].native_sigma == 0.15
-    # STD is consumed as the sigma, never surfaced as its own property row.
-    assert all(not p.property.startswith("OADMET_STD") for p in mol.properties)
-
-
-def test_openadmet_nan_sigma_is_treated_as_absent():
-    recs = [openadmet_rec({"CYP2J2": 0.6}, {"CYP2J2": float("nan")})]
-    cyp = _prop(aggregate({"m": recs}).molecules[0], "baseline_CYP2J2")
-    assert cyp.reads[0].native_sigma is None
-
-
-def test_openadmet_sigma_feeds_but_does_not_gate_confidence():
-    """A single OpenADMET read stays single_source even with a sigma (absolute sigma cutoff is DEFERRED)."""
-    cyp = _prop(aggregate({"m": [openadmet_rec({"CYP3A4": 0.7}, {"CYP3A4": 0.9})]}).molecules[0], "baseline_CYP3A4")
-    assert cyp.confidence == CONF_SINGLE  # sigma is context, not an authority-maker
-
-
-def test_openadmet_tagged_key_does_not_auto_match_admet_ai_clean_name():
-    """The documented honest limit (F-6): OpenADMET's tagged key stays SEPARATE from ADMET-AI's clean head.
-
-    Because the {tag} cannot be reliably parsed out, an OpenADMET read lands under its own prefixed key and
-    does NOT silently share a canonical property with ADMET-AI's ``CYP3A4`` head. A semantic crosswalk that
-    would unite them needs ADMETlab's captured header + a curated map, which is NEEDS_AARAN and NOT invented.
-    """
-    recs = [admet_ai_rec(CYP3A4=0.2), openadmet_rec({"CYP3A4": 0.9}, {"CYP3A4": 0.1})]
-    mol = aggregate({"m": recs}).molecules[0]
-    names = {p.property for p in mol.properties}
-    assert names == {"CYP3A4", "baseline_CYP3A4"}       # two separate rows, not merged
-    assert _prop(mol, "CYP3A4").n_models == 1           # each stays single_source (never falsely "confident")
-    assert _prop(mol, "CYP3A4").confidence == CONF_SINGLE
-    assert _prop(mol, "baseline_CYP3A4").confidence == CONF_SINGLE
 
 
 # --------------------------------------------------------------------------------------------------

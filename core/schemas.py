@@ -7,9 +7,9 @@ the reusable ``Uncertainty`` envelope.
 
 Schema rule (CLAUDE.md §3): the uncertainty / applicability-domain (AD) fields are *reserved from day
 one* so no adapter has to be re-touched when the AD policy is eventually written. Many upstreams emit a
-native signal - OpenADMET per-prediction sigma (``OADMET_STD_*``), OPERA ``AD`` / ``AD_index`` /
-``Conf_index``, BayeshERG aleatoric/epistemic, PKSmart fold-error, FAME3R ``FAME3RScore``, ADMETlab's
-Youden high/low-confidence flag. ``Uncertainty`` has a home for each. The *policy* that consumes them
+native signal - OPERA ``AD`` / ``AD_index`` / ``Conf_index``, BayeshERG aleatoric/epistemic, PKSmart
+fold-error, FAME3R ``FAME3RScore``, ADMETlab's Youden high/low-confidence flag, OCHEM's distance-to-model.
+``Uncertainty`` has a home for each. The *policy* that consumes them
 (the operational AD rule, conformal calibration) is DEFERRED (CLAUDE.md §4a): we reserve the fields,
 we do not decide the rule.
 
@@ -68,7 +68,7 @@ class Uncertainty(BaseModel):
       ``Conf_index``. ADStatus is *folded in here* rather than kept separate: OPERA emits all three per
       endpoint alongside the prediction, so one envelope keeps them together with the other signals.
     - ``extra`` - anything model-specific with no first-class field (e.g. ADMETlab's high/low flag,
-      FAME3R ``FAME3RScore``, OpenADMET raw sigma tags).
+      FAME3R ``FAME3RScore``, OCHEM's distance-to-model).
     """
 
     model_config = ConfigDict(extra="forbid")

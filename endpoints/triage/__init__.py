@@ -6,7 +6,7 @@ aggregators select their models by *endpoint membership* in the registry
 package stays a thin marker: the per-model adapters live in their own subfolders, each in an isolated
 pixi env.
 
-triage physically hosts the three cross-cutting generalists (``admet_ai``, ``admetlab3``, ``openadmet``):
+triage physically hosts the two cross-cutting generalists (``admet_ai``, ``admetlab3``):
 they sit under this folder but their outputs feed several endpoints' aggregators, because their registry
 ``endpoints`` set is a superset (e.g. ``admet_ai`` carries triage + herg + metabolism + clearance + ppb +
 solubility + lipophilicity + permeability + distribution + toxicity). Model -> endpoint is a light graph
