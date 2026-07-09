@@ -8,8 +8,9 @@ TWO tiers that are emitted as SEPARATE blocks and never merged:
   heads that run in the bulk loop -
     ADMET-AI  DILI / hERG / AMES / Carcinogens_Lagunin / ClinTox / Skin_Reaction  (P(toxic) in [0,1]),
     ADMET-AI  LD50_Zhu                                                            (a MAGNITUDE, not a P),
-    ADMETlab  organ-tox heads: nephro / neuro / cyto / immuno / genotox           (P(toxic) in [0,1]),
     toxicophores  BRENK structural-alert hit / count                             (a soft alert flag).
+  (Organ-specific tox - nephro/neuro/cyto/immuno/genotox - was an admetlab3 read; admetlab3 has been
+  removed, so organ-tox is a ProTox-manual-shortlist read only until an automatable replacement lands.)
 - **Shortlist (confirmatory, richer):** the ProTox 3.0 web read [t39 SOP ledger] -
     LD50 (mg/kg), toxicity class (1-6), and per-endpoint Active/Inactive + probability.
 
@@ -29,12 +30,6 @@ separate:
   into one another. In this aggregator ``LD50_Zhu`` lives ONLY in ``bulk.magnitude_reads`` (tagged
   ``comparable_to_protox_ld50 = False``) and ProTox ``LD50`` lives ONLY in ``shortlist.ld50_mg_kg``.
   There is no code path, and no output field, that reads or combines both.
-
-NEEDS_AARAN / placeholder note (IO_SPEC §1 #10/#11, F-6): the LITERAL ADMETlab 3.0 CSV column names for
-the five organ-tox heads are 5 of the 119 columns that need a single live ``/api/admetCSV`` call to
-capture. The keys in ``_ADMETLAB_PROB_HEADS`` are DOCUMENTED PLACEHOLDERS, not verified literals. The
-aggregation logic and the canonical endpoint labels are final; when the admetlab3 adapter (t35) captures
-the real header, swap only the placeholder KEYS. See the TODO on that constant.
 
 This aggregator runs in the core env (no box, no GPU) and consumes fields already emitted by the
 contributing models, identified by ``rec.model`` (the registry primary key), never by folder. It emits a
@@ -68,24 +63,12 @@ _ADMET_AI_PROB_HEADS: dict[str, str] = {
     "Skin_Reaction": "skin_reaction",
 }
 
-# ADMETlab 3.0 organ-tox heads → canonical endpoint. LANDMINE / NEEDS_AARAN (IO_SPEC §1 #10/#11, F-6):
-# these KEYS are DOCUMENTED PLACEHOLDERS. The literal ADMETlab CSV column names are 5 of the 119 columns
-# that require ONE live ``/api/admetCSV`` call to capture (the admetlab3 adapter task, t35). Do NOT treat
-# these key strings as verified literals; when t35 captures the real header, swap the keys here. The
-# canonical endpoint labels (the values) and the aggregation logic are final and do not change.
-# TODO(t35 / NEEDS_AARAN): replace the placeholder keys below with the real ADMETlab CSV column names.
-_ADMETLAB_PROB_HEADS: dict[str, str] = {
-    "nephrotoxicity": "nephrotoxicity",
-    "neurotoxicity": "neurotoxicity",
-    "cytotoxicity": "cytotoxicity",
-    "immunotoxicity": "immunotoxicity",
-    "genotoxicity": "genotoxicity",
-}
-
 # Per-model probability-head maps, keyed by the model that emits them.
+# NOTE: organ-specific tox (nephro/neuro/cyto/immuno/geno) was sourced from admetlab3, which has been
+# removed (chronically-unstable web service). Until an automatable replacement is wired, organ-specific
+# tox is a ProTox-manual-shortlist read only; the bulk automated panel is admet_ai heads + toxicophores.
 _PROB_HEADS: dict[ModelName, dict[str, str]] = {
     ModelName.admet_ai: _ADMET_AI_PROB_HEADS,
-    ModelName.admetlab3: _ADMETLAB_PROB_HEADS,
 }
 
 # ADMET-AI MAGNITUDE heads: NOT probabilities. Kept as their own scalar read, never folded into a
@@ -250,8 +233,8 @@ class EndpointResult(BaseModel):
 
     endpoint: Endpoint = Endpoint.toxicity
     quantity: str = (
-        "toxicity in two SEPARATE tiers: a bulk-substitute per-endpoint P(toxic) panel (ADMET-AI + "
-        "ADMETlab organ-tox heads + toxicophores alerts) and a ProTox confirmatory shortlist (LD50 mg/kg, "
+        "toxicity in two SEPARATE tiers: a bulk-substitute per-endpoint P(toxic) panel (ADMET-AI heads + "
+        "toxicophores alerts) and a ProTox confirmatory shortlist (LD50 mg/kg, "
         "class 1-6, per-endpoint Active/Inactive + prob). ADMET-AI LD50_Zhu (log 1/(mol/kg), up=toxic) is "
         "NEVER merged with ProTox LD50 (mg/kg, lower=toxic) - different scale and opposite direction (F-5)."
     )
@@ -306,7 +289,7 @@ def _bulk_panel(records: Sequence[OutputRecord]) -> BulkPanel:
     for rec in records:
         ev = rec.endpoint_values or {}
 
-        # Probability heads (ADMET-AI classifiers + ADMETlab organ-tox), grouped by canonical endpoint.
+        # Probability heads (ADMET-AI classifiers), grouped by canonical endpoint.
         for src_key, endpoint in _PROB_HEADS.get(rec.model, {}).items():
             p = _coerce_prob(ev.get(src_key))
             if p is None:
@@ -361,11 +344,6 @@ def _bulk_panel(records: Sequence[OutputRecord]) -> BulkPanel:
         "a MAGNITUDE (log 1/(mol/kg)) kept out of every probability and NOT comparable to ProTox LD50 "
         "(mg/kg) - F-5; toxicophores is a SOFT alert flag, not a probability and not a kill.",
     ]
-    if any(rec.model == ModelName.admetlab3 for rec in records):
-        notes.append(
-            "ADMETlab organ-tox head keys are PLACEHOLDERS: the literal CSV column names need one live "
-            "/api/admetCSV call (NEEDS_AARAN, t35 / F-6); the aggregation and endpoint labels are final."
-        )
 
     return BulkPanel(
         probability_panel=probability_panel,
@@ -492,7 +470,7 @@ def aggregate(
 
     ``molecules`` is the compound set (see ``_normalize_molecules`` for the accepted shapes); each molecule's
     bundle is a list of its model ``OutputRecord``s. The bulk panel is built from the automatable heads
-    (ADMET-AI + ADMETlab organ-tox + toxicophores); the shortlist is the ProTox web read. ADMET-AI
+    (ADMET-AI + toxicophores); the shortlist is the ProTox web read. ADMET-AI
     ``LD50_Zhu`` and ProTox ``LD50`` are structurally separate and are NEVER merged or converted (F-5).
     """
     norm = _normalize_molecules(molecules)

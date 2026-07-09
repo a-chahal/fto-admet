@@ -6,7 +6,7 @@ these members, so the *values* are a stable contract: each member's value is its
 membership by string works (``ModelName("pksmart") is ModelName.pksmart``). Both are ``StrEnum`` so a
 member compares equal to and serializes as its plain string.
 
-Counts are fixed and load-bearing: exactly 13 endpoints and 28 model names (SETTLED §5). A wrong
+Counts are fixed and load-bearing: exactly 13 endpoints and 27 model names (SETTLED §5). A wrong
 count or a dropped/renamed member surfaces later as a registry or aggregator mismatch. Permeability is
 aggregate-only and has no ``ModelName``. The dropped/replaced upstreams (deephit, spielvogel,
 cardiodpi, fame3; CLAUDE.md §4) are intentionally absent.
@@ -36,10 +36,9 @@ class Endpoint(StrEnum):
 
 
 class ModelName(StrEnum):
-    """One member per model adapter, the registry's primary key (CLAUDE.md §2). 28 members, no more."""
+    """One member per model adapter, the registry's primary key (CLAUDE.md §2). 27 members, no more."""
 
     admet_ai = "admet_ai"
-    admetlab3 = "admetlab3"
     bayesherg = "bayesherg"
     cardiotox_net = "cardiotox_net"
     ctoxpred2 = "ctoxpred2"

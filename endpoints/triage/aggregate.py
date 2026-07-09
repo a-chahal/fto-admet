@@ -3,33 +3,24 @@
 
 Contract (task t51, CLAUDE.md §2, IO_SPEC §2 "triage"/§1 #1-#3, SETTLED §7 "Phase 1 - flags only,
 no kills here"): this is the FIRST thing a molecule meets in the funnel. It runs in the core env (no
-box, no GPU) and summarizes the two cross-cutting generalists into a compact per-property flag table:
+box, no GPU) and summarizes the cross-cutting generalist(s) into a compact per-property flag table:
 
     model       role                                     native confidence signal
     -----       ----                                     -------------------------
     admet_ai    BROAD baseline (ADMET-AI v2)             none (INDIRECT: cross-model spread only)
-    admetlab3   BROAD (119 heads, DMPNN + descriptors)   per-endpoint high/low Youden confidence FLAG
 
 The headline design rule (task t51, SETTLED §7): **triage FLAGS, it never KILLS.** No threshold here
 promotes or rejects a molecule; there is no pass/fail verdict, no gate, no kill. Every field this
 aggregator emits is a routing hint (a flag), and every ``PropertyFlag.is_gate`` is explicitly False.
 
-UNCERTAINTY = CROSS-MODEL SPREAD (INDIRECT), per the task and IO_SPEC §1 #1: where the generalists that
+UNCERTAINTY = CROSS-MODEL SPREAD (INDIRECT), per the task and IO_SPEC §1 #1: where generalists that
 report the SAME property DIVERGE, the divergence flag is raised. A single generalist is NEVER authority
 (task t51 landmine): a property reported by exactly one model is marked ``single_source`` (not
-cross-checked), never "confident". ADMETlab's high/low confidence flag FEEDS the confidence read on top
-of the spread signal (surfaced per property).
-
-CROSS-MODEL MATCHING, and an honest limit (F-6, NEEDS_AARAN). Cross-model spread can only be computed
-for properties the models report under the SAME canonical key. Here:
-  - ``admet_ai`` heads are canonical named columns (``hERG`` / ``BBB_Martins`` / the CYP heads / ...),
-    read as emitted (IO_SPEC §1 #1).
-  - ``admetlab3``'s 119 literal column names are a build-time live read (F-6, NEEDS_AARAN): they are NOT
-    hardcoded here. Its heads are read as emitted and surface as their own rows; a *semantic crosswalk*
-    that would let an ADMETlab head share a canonical key with an ADMET-AI head needs that captured header
-    and is a documented TODO (below), NOT invented. So in real data spread fires where key names coincide;
-    the synthetic test drives the divergence logic directly. This is deliberate: fabricating a name
-    crosswalk before the header is captured is exactly the kind of guess CLAUDE.md §5 forbids.
+cross-checked), never "confident". NOTE: with admetlab3 removed there is currently ONE generalist
+(admet_ai), so every property is ``single_source`` and the spread machinery is dormant until a second
+independent generalist is added; the mechanism is kept because that is the funnel-entry design. Reads are
+matched across models by SHARED canonical key: ``admet_ai`` heads are canonical named columns (``hERG`` /
+``BBB_Martins`` / the CYP heads / ...), read as emitted (IO_SPEC §1 #1).
 
 EXCLUSIONS (task t51 / F-17): ADMET-AI's ``VDss_Lombardo`` and ``Half_Life_Obach`` are already absent
 from ``endpoint_values`` (the t21 adapter quarantines them in ``raw``). This aggregator ONLY reads
@@ -40,8 +31,6 @@ DEFERRED (CLAUDE.md §4a; wired to a documented boundary, never invented):
     AD / decision policy that would turn a flag into a promote/reject call is DEFERRED.
   - A numeric divergence cut for NON-probability scales (regression heads) needs per-property units and
     calibration -> the raw spread is recorded but does NOT raise a flag on those scales (DEFERRED).
-  - Only ADMETlab's explicit high/low flag drives a native low-confidence mark (a calibrated cutoff on
-    any other native signal is DEFERRED).
   - The ADMET-AI VDss/half-life exclusion (F-17) is honored by only reading ``endpoint_values``.
 """
 
@@ -60,7 +49,7 @@ from core.schemas import OutputRecord
 # identity, never by folder. A record from any other model is ignored (triage is generalist-only).
 # --------------------------------------------------------------------------------------------------
 GENERALISTS: frozenset[ModelName] = frozenset(
-    {ModelName.admet_ai, ModelName.admetlab3}
+    {ModelName.admet_ai}
 )
 
 # ADMET-AI heads the model itself reports as worse-than-the-mean (F-17). Already absent from
@@ -79,9 +68,6 @@ CONF_OK = "ok"                      # >= 2 generalists agree and no native low-c
 CONF_SINGLE = "single_source"       # only one generalist reports it -> not cross-checked, not authority
 CONF_NONE = "none"                  # no numeric value to read
 
-# ADMETlab per-endpoint confidence flag values (Youden high/low, IO_SPEC §1 #2).
-CONF_FLAG_LOW = "low"
-CONF_FLAG_HIGH = "high"
 
 
 def _as_output_record(rec: Any) -> OutputRecord:
@@ -113,8 +99,7 @@ def _numeric(value: Any) -> float | None:
 class GeneralistRead(BaseModel):
     """One generalist's read of one property: the raw value + any native confidence signal it carried.
 
-    ``native_conf_flag`` is ADMETlab's per-endpoint Youden high/low flag, surfaced as context; the value
-    itself is NEVER averaged across models (only same-scale spread is computed, see below).
+    The value itself is NEVER averaged across models (only same-scale spread is computed, see below).
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -122,7 +107,6 @@ class GeneralistRead(BaseModel):
     model: ModelName
     field: str
     value: float | int | bool | None
-    native_conf_flag: str | None = None
 
 
 class PropertyFlag(BaseModel):
@@ -172,7 +156,7 @@ class EndpointResult(BaseModel):
 
     endpoint: Endpoint = Endpoint.triage
     quantity: str = (
-        "funnel-entry generalist summary: a per-property flag table over ADMET-AI v2 / ADMETlab 3.0. "
+        "funnel-entry generalist summary: a per-property flag table over ADMET-AI v2. "
         "Uncertainty = cross-model spread (divergent generalists raise the flag); a single "
         "generalist is never authority. FLAGS ONLY - no threshold, gate, kill, or pass/fail verdict."
     )
@@ -180,24 +164,6 @@ class EndpointResult(BaseModel):
     n_molecules: int
     notes: list[str] = Field(default_factory=list)
     deferred: list[str] = Field(default_factory=list)
-
-
-def _conf_flags(rec: OutputRecord) -> dict[str, str]:
-    """Read ADMETlab's per-endpoint Youden high/low confidence flags from the shared Uncertainty envelope.
-
-    Documented convention (CLAUDE.md §3): a multi-head generalist carries its per-property high/low flags
-    in ``uncertainty.extra["confidence_flags"]`` as a ``{property: "high"|"low"}`` map. If the adapter is
-    not yet wired that way (ADMETlab's literal columns are NEEDS_AARAN, F-6), this simply returns empty and
-    the confidence read falls back to cross-model spread. TODO: confirm the exact sub-shape once the
-    ADMETlab adapter and its captured header land.
-    """
-    unc = rec.uncertainty
-    if unc is None or not unc.extra:
-        return {}
-    cf = unc.extra.get("confidence_flags")
-    if isinstance(cf, Mapping):
-        return {str(k): str(v).lower() for k, v in cf.items()}
-    return {}
 
 
 def _reads_for_record(rec: OutputRecord) -> list[tuple[str, GeneralistRead]]:
@@ -212,13 +178,10 @@ def _reads_for_record(rec: OutputRecord) -> list[tuple[str, GeneralistRead]]:
     ev = rec.endpoint_values or {}
     out: list[tuple[str, GeneralistRead]] = []
 
-    conf_flags = _conf_flags(rec)
     for key, val in ev.items():
         if key in EXCLUDED_R2_NEGATIVE:  # never resurrect VDss_Lombardo / Half_Life_Obach (F-17)
             continue
-        out.append(
-            (key, GeneralistRead(model=rec.model, field=key, value=_scalar(val), native_conf_flag=conf_flags.get(key)))
-        )
+        out.append((key, GeneralistRead(model=rec.model, field=key, value=_scalar(val))))
     return out
 
 
@@ -243,11 +206,9 @@ def _property_flag(prop: str, reads: list[GeneralistRead]) -> PropertyFlag:
         if prob_scale and spread > PROB_SPREAD_FLAG:
             divergent = True
 
-    native_low = any(r.native_conf_flag == CONF_FLAG_LOW for r in reads)
-
     if not numerics:
         confidence = CONF_NONE
-    elif divergent or native_low:
+    elif divergent:
         confidence = CONF_LOW
     elif n_models >= 2:
         confidence = CONF_OK
@@ -265,8 +226,6 @@ def _property_flag(prop: str, reads: list[GeneralistRead]) -> PropertyFlag:
             "reads are on a non-probability scale: the numeric spread is recorded but does NOT raise a "
             "divergence flag (a calibrated per-property cut is DEFERRED, CLAUDE.md §4a)."
         )
-    if native_low:
-        notes.append("a native low-confidence signal (ADMETlab Youden low flag) is present -> confidence = low.")
     if confidence == CONF_SINGLE:
         notes.append("only ONE generalist reports this property: a single generalist is never authority (not cross-checked).")
 
@@ -298,7 +257,7 @@ def _triage_for(mol_id: str, records: Sequence[OutputRecord]) -> MoleculeTriage:
         "promotes, rejects, or kills a molecule (SETTLED §7).",
     ]
     if not props:
-        notes.append("no generalist (admet_ai / admetlab3) read present in the bundle.")
+        notes.append("no generalist (admet_ai) read present in the bundle.")
     if divergent:
         notes.append(f"{len(divergent)} propert{'y' if len(divergent) == 1 else 'ies'} flagged divergent (cross-model spread).")
 
@@ -360,19 +319,17 @@ def aggregate(
         molecules=mols,
         n_molecules=len(mols),
         notes=[
-            "triage is the funnel entry: a compact per-property flag table over ADMET-AI v2 / ADMETlab 3.0. "
+            "triage is the funnel entry: a compact per-property flag table over ADMET-AI v2. "
             "FLAGS ONLY - no kills at this stage (SETTLED §7).",
             "uncertainty = cross-model spread (INDIRECT): divergent generalists raise the flag. A single "
             "generalist is never authority; ADMET-AI VDss/half-life stay excluded (F-17).",
-            "ADMETlab's Youden high/low flag feeds the confidence read on top of the spread signal.",
+            "with admetlab3 removed there is one generalist (admet_ai), so every property is currently "
+            "single_source; the spread machinery activates when a second independent generalist is added.",
         ],
         deferred=[
             "the divergence threshold on the probability scale is a coarse TRIAGE default; the calibrated "
             "AD / decision policy that would turn a flag into a promote/reject call is DEFERRED (CLAUDE.md §4a).",
             "a numeric divergence cut for non-probability (regression) scales is DEFERRED: that spread is "
             "surfaced, not thresholded.",
-            "a SEMANTIC cross-model name crosswalk (so an ADMETlab head can share a canonical key with an "
-            "ADMET-AI head) needs ADMETlab's captured 119-column header (F-6, NEEDS_AARAN) and is NOT "
-            "invented here; until then spread fires only where key names already coincide.",
         ],
     )

@@ -24,7 +24,6 @@ from endpoints.metabolism.aggregate import (
     ADMET_AI_HEPATOCYTE_UNIT,
     ADMET_AI_MICROSOME,
     ADMET_AI_MICROSOME_UNIT,
-    ADMETLAB_STABILITY_KEY,
     CONF_HIGH,
     CONF_LOW,
     CONF_NONE,
@@ -89,14 +88,6 @@ def admet_ai_rec(hepatocyte=None, microsome=None) -> dict:
     }
 
 
-def admetlab_rec(stability=None) -> dict:
-    return {
-        "model": ModelName.admetlab3,
-        "endpoint_values": {ADMETLAB_STABILITY_KEY: stability},
-        "uncertainty": None,
-        "raw": {},
-        "provenance": PROV,
-    }
 
 
 # --------------------------------------------------------------------------------------------------
@@ -195,15 +186,6 @@ def test_stability_flag_coarse_bands_from_hepatocyte():
     assert aggregate({"m": [admet_ai_rec(hepatocyte=50.0)]}).molecules[0].stability.flag == LABILE
 
 
-def test_admetlab_head_is_placeholder_and_excluded_from_flag():
-    """The ADMETlab head is surfaced but its direction is NEEDS_AARAN, so it never drives the flag."""
-    res = aggregate({"m": [admetlab_rec(stability=0.8)]})
-    stab = res.molecules[0].stability
-    assert stab.present
-    cand = next(c for c in stab.candidates if c.model == ModelName.admetlab3)
-    assert cand.direction_known is False
-    # No known-direction read => flag stays 'unknown' even though a value was surfaced.
-    assert stab.flag == UNKNOWN
 
 
 def test_stability_absent_degrades_gracefully():
@@ -250,7 +232,7 @@ def test_result_level_contract():
     assert res.endpoint == Endpoint.metabolism
     # The result advertises the two-quantities / no-averaging contract and the deferred boundaries.
     assert "TWO" in res.quantity
-    assert any("NEEDS_AARAN" in d for d in res.deferred)
+    assert any("DEFERRED" in d for d in res.deferred)
     assert any("ORDINAL" in n or "averaged" in n for n in res.notes)
 
 

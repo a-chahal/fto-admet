@@ -127,10 +127,10 @@ def test_hash_input_file_and_env_lock_deterministic(tmp_path):
 # --------------------------------------------------------------------------- raw cache
 def test_cache_raw_round_trips_verbatim_string(tmp_path):
     cfg = _cfg(tmp_path)
-    payload = "SMILES,pred\nCC(=O)O,0.83\n"  # e.g. a raw ADMETlab CSV response
-    dest = ledger.cache_raw("admetlab3", "abc123", payload, cfg=cfg)
-    assert dest == cfg.root / "cache" / "admetlab3" / "abc123.json"
-    assert ledger.read_raw("admetlab3", "abc123", cfg=cfg) == payload
+    payload = "SMILES,pred\nCC(=O)O,0.83\n"  # e.g. a raw web-API CSV response
+    dest = ledger.cache_raw("ochem_ppb", "abc123", payload, cfg=cfg)
+    assert dest == cfg.root / "cache" / "ochem_ppb" / "abc123.json"
+    assert ledger.read_raw("ochem_ppb", "abc123", cfg=cfg) == payload
 
 
 def test_cache_raw_serializes_dict(tmp_path):
@@ -142,7 +142,7 @@ def test_cache_raw_serializes_dict(tmp_path):
 
 def test_cache_raw_bytes_written_verbatim(tmp_path):
     cfg = _cfg(tmp_path)
-    dest = ledger.cache_raw("admetlab3", "bin", b"\x00rawbytes\xff", cfg=cfg)
+    dest = ledger.cache_raw("ochem_ppb", "bin", b"\x00rawbytes\xff", cfg=cfg)
     assert dest.read_bytes() == b"\x00rawbytes\xff"
 
 

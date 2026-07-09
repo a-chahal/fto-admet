@@ -9,11 +9,11 @@ Models that feed hERG: ``ctoxpred2`` (this task, t23 - the automatable multichan
 replaces the web-only CardioDPi: 0/1 blocker VOTES + confidences for hERG / NaV1.5 / CaV1.2), and later
 ``bayesherg`` (t24), ``cardiotox_net``, ``cardiogenai`` (t25, discriminative votes; its generative path
 is GATED and scaffold-only), plus the cross-cutting generalists whose registry ``endpoints`` set carries
-``Endpoint.herg`` (ADMET-AI's and ADMETlab's hERG pre-screen heads).
+``Endpoint.herg`` (ADMET-AI's hERG pre-screen head).
 
 The hERG aggregator (t52) is DEFERRED (CLAUDE.md §4a): the "harmonize-then-weight-toward-sensitivity"
 philosophy is settled but the thresholds/weights are not. Crucially, the different upstreams do NOT all
-contribute the same TYPE of signal - some emit a P(block) probability (ADMET-AI, ADMETlab, CardioTox
+contribute the same TYPE of signal - some emit a P(block) probability (ADMET-AI, CardioTox
 net, BayeshERG), while ``ctoxpred2`` emits a 0/1 VOTE weighted by its confidence, NOT a probability to
 average into the pool (docs IO_SPEC §2). Each adapter here only emits its raw per-model signal; the
 policy that reconciles vote-vs-probability lives downstream in t52, not in any adapter.

@@ -3,12 +3,12 @@
 P-gp is sourced *via the generalists* (SETTLED skeleton, IO_SPEC §1 #16): there is no separate P-gp
 service to install. So ``pgp`` is a **virtual / DERIVED model** - it has no ``pixi.toml``, no
 ``pixi.lock`` and no independently executed ``run.py``. Its value is the ``Pgp_Broccatelli`` head that
-ADMET-AI (t21) already emits into ``endpoint_values``, cross-checked with the ADMETlab P-gp head (t35).
+ADMET-AI (t21) already emits into ``endpoint_values``.
 It exists as a registry entry so provenance is explicit and the distribution (t44) / permeability (t46)
 aggregators can query it by endpoint membership.
 
 This module is the tiny, env-free helper those aggregators call: given an already-collected generalist
-``OutputRecord`` (the object ``core.dispatch`` produced for ADMET-AI / ADMETlab, or its plain-JSON dict
+``OutputRecord`` (the object ``core.dispatch`` produced for ADMET-AI, or its plain-JSON dict
 form), it pulls out the P-gp probability and normalizes it to a single efflux flag in ``[0, 1]``. It
 does **not** re-run any model and imports nothing from ``core`` (it duck-types the record), so it is
 trivially unit-testable on the laptop with no box, GPU or pixi env.
@@ -28,18 +28,11 @@ from dataclasses import dataclass
 from typing import Any
 
 # ADMET-AI's TDC head name is a stable literal in that model's ``endpoint_values`` (IO_SPEC §1 #1;
-# endpoints/triage/admet_ai). It is the primary P-gp source.
+# endpoints/triage/admet_ai). It is the P-gp source.
 ADMET_AI_PGP_KEY = "Pgp_Broccatelli"
 
-# ADMETlab 3.0 also emits a P-gp head, used only as a cross-check. Its exact CSV column name is one of
-# the 119 literal ADMETlab column names that require a single live ``/api/admetCSV`` call to capture
-# (CLAUDE.md §4, ADMETlab is NEEDS_AARAN at t35). Until t35 captures the header this stays ``None`` and
-# the cross-check key is a no-op; do NOT guess the literal (no-fabricate rule).
-# TODO(t35): set ADMETLAB_PGP_KEY to the real ADMETlab P-gp column name once the live header is captured.
-ADMETLAB_PGP_KEY: str | None = None
-
-# Source keys tried in priority order: ADMET-AI first (primary), ADMETlab second (cross-check).
-_PGP_SOURCE_KEYS: tuple[str | None, ...] = (ADMET_AI_PGP_KEY, ADMETLAB_PGP_KEY)
+# Source keys tried in priority order (currently ADMET-AI only).
+_PGP_SOURCE_KEYS: tuple[str | None, ...] = (ADMET_AI_PGP_KEY,)
 
 
 @dataclass(frozen=True)
@@ -78,7 +71,7 @@ def _model_name(record: Any) -> str | None:
 def extract_pgp(record: Any) -> PgpFlag:
     """Extract + normalize the P-gp efflux flag from one generalist ``OutputRecord`` (or its dict form).
 
-    Tries ADMET-AI's ``Pgp_Broccatelli`` first, then the ADMETlab P-gp head (once t35 wires its key).
+    Reads ADMET-AI's ``Pgp_Broccatelli`` head.
     Returns a :class:`PgpFlag` whose ``value`` is a probability in ``[0, 1]`` (UP = more efflux
     liability) or ``None`` when the head is absent, null, non-numeric, or out of the ``[0, 1]`` range.
     Out-of-range values are rejected (``None``) rather than silently clamped, so a malformed upstream

@@ -9,7 +9,6 @@ DIFFERENT questions that are kept completely separate - conflating them is the e
     --------          --------                --------------                       ------------
     stability         is it metabolically     admet_ai -> Clearance_Hepatocyte_AZ  uL/min/10^6 cells
     (whole-molecule)  stable?                 admet_ai -> Clearance_Microsome_AZ   uL/min/mg
-                                              admetlab3 -> metabolic-stability head (column NEEDS_AARAN)
     site of           WHERE is the soft       smartcyp -> per-atom Score/Ranking   kJ/mol scale (LOWER = SoM)
     metabolism (SoM)  spot?                   fame3r   -> per-atom SoM probability  [0,1] (HIGHER = SoM)
     (per-atom)
@@ -35,10 +34,6 @@ Qualitative-only / DEFERRED boundaries honored here (CLAUDE.md §4a, F-17; never
   only: each candidate carries a ``low_weight`` flag and the coarse stability bands below are labeled
   TRIAGE defaults. The operational AD rule / conformal calibration that would turn these into a
   calibrated stability call is DEFERRED.
-- The ADMETlab metabolic-stability head is one of ADMETlab 3.0's 119 CSV columns whose LITERAL name (and
-  direction) are only knowable from one live ``/api/admetCSV`` call (NEEDS_AARAN, F-6, CLAUDE.md §4). We
-  read it through a documented PLACEHOLDER key and never assume its direction; it never feeds a derived
-  flag. Replacing the placeholder with the real column literal is a one-line change once captured.
 - The two ADMET-AI clearance heads have DIFFERENT units (uL/min/10^6 cells vs uL/min/mg) and are kept as
   separate labeled candidates, never combined - the same discipline as the clearance aggregator (F-3).
 """
@@ -61,11 +56,6 @@ ADMET_AI_HEPATOCYTE = "Clearance_Hepatocyte_AZ"
 ADMET_AI_MICROSOME = "Clearance_Microsome_AZ"
 ADMET_AI_HEPATOCYTE_UNIT = "uL/min/10^6 cells"
 ADMET_AI_MICROSOME_UNIT = "uL/min/mg"
-
-# ADMETlab metabolic-stability head. The literal column name is one of ADMETlab 3.0's 119 CSV columns
-# and is NEEDS_AARAN (F-6): this is a PLACEHOLDER, to be replaced with the captured literal. Its
-# direction is likewise unconfirmed, so it is surfaced but NEVER folded into the derived stability flag.
-ADMETLAB_STABILITY_KEY = "metabolic_stability"  # PLACEHOLDER - real ADMETlab column literal is NEEDS_AARAN
 
 # Stability direction (for the reads whose direction IS known - the ADMET-AI CLint heads).
 STABILITY_DIRECTION = "higher CLint-like value = faster intrinsic clearance = LESS metabolically stable"
@@ -151,7 +141,6 @@ class StabilityCandidate(BaseModel):
 
     Each candidate carries its own ``unit`` so the two ADMET-AI heads (different units/matrices) can never
     be averaged. ``low_weight`` marks the ADMET-AI clearance heads as qualitative only (F-17).
-    ``direction_known`` is False for the ADMETlab placeholder head, whose direction is NEEDS_AARAN.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -169,9 +158,8 @@ class StabilityCandidate(BaseModel):
 class StabilityRead(BaseModel):
     """The whole-molecule stability read: labeled candidates + a COARSE qualitative flag (DEFERRED calib.).
 
-    ``flag`` is a coarse triage bucket derived ONLY from the known-direction ADMET-AI CLint heads; the
-    ADMETlab placeholder head never feeds it (direction NEEDS_AARAN). It is qualitative, not a calibrated
-    stability call.
+    ``flag`` is a coarse triage bucket derived ONLY from the known-direction ADMET-AI CLint heads.
+    It is qualitative, not a calibrated stability call.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -295,7 +283,7 @@ def _normalize_molecules(
 def _stability_flag(candidates: Sequence[StabilityCandidate]) -> tuple[str, list[str]]:
     """Coarse qualitative stability bucket from the KNOWN-direction ADMET-AI CLint heads only (F-17).
 
-    The ADMETlab placeholder head (direction NEEDS_AARAN) is excluded. Prefers hepatocyte, falls back to
+    Prefers hepatocyte, falls back to
     microsome (own band set - different unit). Returns (flag, notes). Bands are TRIAGE defaults; the
     calibrated rule is DEFERRED (CLAUDE.md §4a).
     """
@@ -331,8 +319,7 @@ def _stability_flag(candidates: Sequence[StabilityCandidate]) -> tuple[str, list
         )
         return flag, notes
     notes.append(
-        "no known-direction stability read (ADMET-AI CLint) present; stability flag is 'unknown' "
-        "(the ADMETlab head direction is NEEDS_AARAN and never drives the flag)."
+        "no stability read (ADMET-AI CLint) present; stability flag is 'unknown'."
     )
     return UNKNOWN, notes
 
@@ -368,30 +355,13 @@ def _stability_read(records: Sequence[OutputRecord]) -> StabilityRead:
                         low_weight=True,  # F-17
                     )
                 )
-        elif rec.model == ModelName.admetlab3 and ev.get(ADMETLAB_STABILITY_KEY) is not None:
-            candidates.append(
-                StabilityCandidate(
-                    model=ModelName.admetlab3,
-                    field=ADMETLAB_STABILITY_KEY,
-                    value=_f(ev[ADMETLAB_STABILITY_KEY]),
-                    unit="unknown",
-                    direction="UNKNOWN - ADMETlab metabolic-stability column literal + direction are NEEDS_AARAN (F-6)",
-                    direction_known=False,
-                    low_weight=True,
-                    note=(
-                        "read through a PLACEHOLDER key; the real ADMETlab column literal and its "
-                        "direction require one live /api/admetCSV call (NEEDS_AARAN). Surfaced, but "
-                        "excluded from the derived stability flag."
-                    ),
-                )
-            )
 
     if not candidates:
         return StabilityRead(
             present=False,
             candidates=[],
             flag=UNKNOWN,
-            notes=["no whole-molecule stability read (admet_ai / admetlab3) present for this molecule."],
+            notes=["no whole-molecule stability read (admet_ai) present for this molecule."],
         )
 
     flag, flag_notes = _stability_flag(candidates)
@@ -660,9 +630,6 @@ def aggregate(
             "the operational AD rule / conformal calibration that would turn the low-weight ADMET-AI "
             "clearance heads and the coarse stability bands into a calibrated stability call is DEFERRED "
             "(CLAUDE.md §4a); the bands here are qualitative triage defaults only.",
-            "the ADMETlab metabolic-stability head is read through a PLACEHOLDER key; its real 119-CSV "
-            "column literal and direction are NEEDS_AARAN (one live /api/admetCSV call, F-6). It is "
-            "surfaced but never feeds the derived stability flag until the literal is captured.",
             "the SMARTCyp 3.0 (Python/RDKit) per-atom output header is re-verified at build time (smartcyp "
             "adapter t25 is BLOCKED); this aggregator consumes the documented intended raw.atoms schema "
             "(atom_index + Score/Ranking) and maps from that.",

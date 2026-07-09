@@ -25,7 +25,7 @@ differ: this adapter reports a single ``tox_alert_*`` flag/count for the chosen 
 
 Direction (docs §28): **more alerts = more flagged.** This is a SOFT filter that OVER-flags: a hit means
 "look closer", NOT auto-kill. The consuming policy (the toxicity aggregator, which later folds these
-alerts together with ADMETlab organ-tox heads into a per-endpoint P(toxic)) is downstream; this adapter
+alerts together with the ADMET-AI tox heads into a per-endpoint P(toxic)) is downstream; this adapter
 only emits the raw flag / count / matched names.
 
 ``--gpu`` is accepted and ignored (``requires_gpu=False``): the uniform CLI is identical for every model so

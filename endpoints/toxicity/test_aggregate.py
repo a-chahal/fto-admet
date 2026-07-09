@@ -4,8 +4,7 @@ Synthetic ``OutputRecord``-shaped inputs only (laptop, core env - no box, no GPU
 two-tier endpoint exists to guarantee (task t49, IO_SPEC §2, §3 F-5):
 
 - the BULK block is built from the automatable heads: ADMET-AI classifier heads (DILI / hERG / AMES /
-  Carcinogens_Lagunin / ClinTox / Skin_Reaction) as per-endpoint P(toxic), ADMETlab organ-tox heads
-  (nephro / neuro / cyto / immuno / genotox) as P(toxic), and toxicophores as a soft alert flag;
+  Carcinogens_Lagunin / ClinTox / Skin_Reaction) as per-endpoint P(toxic), and toxicophores as a soft alert flag;
 - ADMET-AI ``LD50_Zhu`` is a MAGNITUDE read (log 1/(mol/kg), up=toxic), NOT a probability;
 - the SHORTLIST block is the ProTox web read (LD50 mg/kg, class 1-6, per-endpoint Active/Inactive + prob);
 - the two blocks are SEPARATE and (F-5) there is NO path/field that merges ``LD50_Zhu`` with ProTox LD50;
@@ -31,9 +30,6 @@ def admet_ai_rec(**heads) -> dict:
     return {"model": ModelName.admet_ai, "endpoint_values": dict(heads), "provenance": PROV}
 
 
-def admetlab_rec(**heads) -> dict:
-    """An ADMETlab-shaped record: organ-tox heads in endpoint_values (PLACEHOLDER keys, NEEDS_AARAN literal)."""
-    return {"model": ModelName.admetlab3, "endpoint_values": dict(heads), "provenance": PROV}
 
 
 def toxicophores_rec(hit=True, count=2, names=None, catalog="BRENK") -> dict:
@@ -97,14 +93,6 @@ def test_admet_ai_classifier_heads_become_per_endpoint_p_toxic():
         assert [c.model for c in be.contributions] == [ModelName.admet_ai]
 
 
-def test_admetlab_organ_tox_heads_join_the_panel():
-    res = aggregate({"m1": [admetlab_rec(nephrotoxicity=0.55, neurotoxicity=0.30, cytotoxicity=0.70,
-                                         immunotoxicity=0.10, genotoxicity=0.90)]})
-    panel = {be.endpoint: be.p_toxic for be in res.molecules[0].bulk.probability_panel}
-    assert panel == {
-        "nephrotoxicity": 0.55, "neurotoxicity": 0.30, "cytotoxicity": 0.70,
-        "immunotoxicity": 0.10, "genotoxicity": 0.90,
-    }
 
 
 def test_same_endpoint_probabilities_average_on_one_scale():
@@ -255,23 +243,18 @@ def test_full_bundle_produces_both_blocks_separately():
     bundle = [
         admet_ai_rec(LD50_Zhu=2.1, DILI=0.7, hERG=0.5, AMES=0.4,
                      Carcinogens_Lagunin=0.3, ClinTox=0.8, Skin_Reaction=0.2),
-        admetlab_rec(nephrotoxicity=0.4, neurotoxicity=0.5, cytotoxicity=0.6,
-                     immunotoxicity=0.2, genotoxicity=0.3),
         toxicophores_rec(hit=True, count=1, names=["michael acceptor"]),
         protox_rec(ld50=300.0, tox_class=3, accuracy=70.0),
     ]
     res = aggregate({"FTO-43": bundle})
     mol = res.molecules[0]
     assert mol.mol_id == "FTO-43"
-    # bulk block: 6 ADMET-AI classifier endpoints + 5 ADMETlab organ-tox = 11 probability endpoints,
-    # 1 magnitude read (LD50_Zhu), 1 alert.
-    assert len(mol.bulk.probability_panel) == 11
+    # bulk block: 6 ADMET-AI classifier endpoints, 1 magnitude read (LD50_Zhu), 1 alert.
+    assert len(mol.bulk.probability_panel) == 6
     assert len(mol.bulk.magnitude_reads) == 1
     assert len(mol.bulk.alerts) == 1
     # shortlist block: present and separate.
     assert mol.shortlist is not None and mol.shortlist.ld50_mg_kg == 300.0
-    # the placeholder NEEDS_AARAN note is surfaced when ADMETlab contributes.
-    assert any("PLACEHOLDER" in n for n in mol.bulk.notes)
 
 
 def test_input_shapes_normalize_identically():

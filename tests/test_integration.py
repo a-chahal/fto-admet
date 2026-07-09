@@ -7,8 +7,8 @@ drift is caught here (one fix) instead of poisoning every later smoke test. It t
 one to fix (this task BLOCKs and names the failing test).
 
 Coherence frozen here:
-- models <-> registry: ``ModelName`` and ``REGISTRY`` are a bijection (28 specs, one each).
-- registry <-> Endpoint: every spec's ``endpoints`` is a non-empty subset of ``Endpoint``; the five
+- models <-> registry: ``ModelName`` and ``REGISTRY`` are a bijection (27 specs, one each).
+- registry <-> Endpoint: every spec's ``endpoints`` is a non-empty subset of ``Endpoint``; the four
   cross-cutting sets match IO_SPEC §2; every endpoint is reachable by at least one bulk-loop model.
 - registry env boundary: web-only + OPERA + PBPK carry ``None`` env/entrypoint; every other model has
   both, under ``endpoints/<home>/<model>/``.
@@ -41,14 +41,13 @@ from core.schemas import (
     validate_output,
 )
 
-# The five cross-cutting endpoint sets (IO_SPEC §2), as plain strings, transcribed independently of the
+# The four cross-cutting endpoint sets (IO_SPEC §2), as plain strings, transcribed independently of the
 # registry module so this is a real check, not a tautology against the same literal.
 EXPECTED_CROSS_CUTTING = {
     ModelName.admet_ai: {
         "triage", "herg", "metabolism", "clearance", "ppb", "solubility", "lipophilicity",
         "permeability", "distribution", "toxicity",
     },
-    ModelName.admetlab3: {"triage", "herg", "metabolism", "distribution", "ppb", "toxicity", "permeability"},
     ModelName.boiled_egg: {"distribution", "permeability"},
     ModelName.opera: {"lipophilicity", "clearance", "ppb"},
     ModelName.pgp: {"distribution", "permeability"},
@@ -72,7 +71,7 @@ def test_registry_validate_is_green():
 
 def test_modelname_and_registry_are_a_bijection():
     assert set(REGISTRY) == set(ModelName)
-    assert len(REGISTRY) == len(ModelName) == 28
+    assert len(REGISTRY) == len(ModelName) == 27
     for name, spec in REGISTRY.items():
         assert spec.name == name, name
 
@@ -86,7 +85,7 @@ def test_every_spec_endpoints_are_nonempty_subset_of_endpoint():
         assert spec.endpoints <= all_endpoints, name
 
 
-def test_five_cross_cutting_sets_present_and_exact():
+def test_four_cross_cutting_sets_present_and_exact():
     for name, expected in EXPECTED_CROSS_CUTTING.items():
         assert name in REGISTRY, name
         assert {e.value for e in REGISTRY[name].endpoints} == expected, name

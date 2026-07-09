@@ -43,10 +43,10 @@ def _record_dispatch(monkeypatch, *, fail: set[ModelName] | None = None):
 
 # --------------------------------------------------------------------------- model selection
 def test_select_models_herg_is_exactly_the_bulk_loop_models():
-    # hERG bulk-loop members: the two GPU ensemble models plus the two cross-cutting generalists.
+    # hERG bulk-loop members: the two GPU ensemble models plus the cross-cutting generalist.
     names = {s.name for s in select_models(Endpoint.herg)}
     assert names == {
-        ModelName.bayesherg, ModelName.cardiotox_net, ModelName.admet_ai, ModelName.admetlab3,
+        ModelName.bayesherg, ModelName.cardiotox_net, ModelName.admet_ai,
     }
     # the non-bulk hERG models are excluded (shortlist / gated), never enumerated
     assert ModelName.ctoxpred2 not in names

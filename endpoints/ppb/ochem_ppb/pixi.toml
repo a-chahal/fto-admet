@@ -11,7 +11,7 @@
 # the `openssl` CLI to read the leaf cert + its AIA extension. Guaranteeing openssl on PATH keeps that
 # path working inside the isolated env (see run.py `_ochem_ssl_context`).
 #
-# NO box-solved lock is required for this task (mirrors the admetlab3 api-model): api-model kind
+# NO box-solved lock is required for this task (api-model kind, CLAUDE.md §5): api-model kind
 # (CLAUDE.md §5) is client + retry + cache + mocked test; `pixi run` auto-solves this trivial env on
 # first dispatch. The remaining work is live network calls, not env resolution.
 [workspace]

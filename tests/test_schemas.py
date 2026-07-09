@@ -93,8 +93,8 @@ def test_uncertainty_carries_opera_ad_signals():
 
 
 def test_uncertainty_extra_holds_model_specific_signals():
-    unc = Uncertainty(extra={"admetlab_confidence": "high", "FAME3RScore": 0.42})
-    assert unc.extra["admetlab_confidence"] == "high"
+    unc = Uncertainty(extra={"youden_confidence": "high", "FAME3RScore": 0.42})
+    assert unc.extra["youden_confidence"] == "high"
 
 
 @pytest.mark.parametrize("field", ["confidence", "ad_index", "conf_index"])

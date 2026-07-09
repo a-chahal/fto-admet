@@ -3,14 +3,14 @@
 ``REGISTRY`` is the single source of truth the dispatcher and every aggregator key off. Dispatch
 resolves a model's env + entrypoint here; each endpoint's ``aggregate.py`` selects its models by
 *endpoint membership* (``ep in spec.endpoints``), never by folder layout. ``endpoints`` is therefore a
-``frozenset`` and the cross-cutting models (``admet_ai``, ``admetlab3``, ``boiled_egg``, ``opera``,
+``frozenset`` and the cross-cutting models (``admet_ai``, ``boiled_egg``, ``opera``,
 ``pgp``) carry every endpoint their output feeds, not just their home folder (IO_SPEC §2).
 
 Immutability is the point: specs are a reviewed contract, so ``ModelSpec`` and ``Provenance`` are
-frozen dataclasses and ``REGISTRY`` is populated once at import. Counts are load-bearing: exactly 28
-specs, one per ``ModelName`` (SETTLED §5; openadmet removed as redundant with admet_ai); the
-dropped/replaced upstreams (deephit, spielvogel, cardiodpi, fame3; CLAUDE.md §4) have no member and
-cannot appear.
+frozen dataclasses and ``REGISTRY`` is populated once at import. Counts are load-bearing: exactly 27
+specs, one per ``ModelName`` (SETTLED §5; openadmet + admetlab3 removed - the first redundant with
+admet_ai, the second a chronically-unstable web service); the dropped/replaced upstreams (deephit,
+spielvogel, cardiodpi, fame3; CLAUDE.md §4) have no member and cannot appear.
 
 Boundaries honored here:
 - Web-only tools (``watanabe_renal``, ``watanabe_pgp_brain``, ``protox``) and the out-of-band native
@@ -86,10 +86,6 @@ _CROSS_CUTTING: dict[ModelName, frozenset[Endpoint]] = {
         Endpoint.solubility, Endpoint.lipophilicity, Endpoint.permeability, Endpoint.distribution,
         Endpoint.toxicity,
     }),
-    ModelName.admetlab3: frozenset({
-        Endpoint.triage, Endpoint.herg, Endpoint.metabolism, Endpoint.distribution, Endpoint.ppb,
-        Endpoint.toxicity, Endpoint.permeability,
-    }),
     ModelName.boiled_egg: frozenset({Endpoint.distribution, Endpoint.permeability}),
     ModelName.opera: frozenset({Endpoint.lipophilicity, Endpoint.clearance, Endpoint.ppb}),
     ModelName.pgp: frozenset({Endpoint.distribution, Endpoint.permeability}),
@@ -102,7 +98,6 @@ _CROSS_CUTTING: dict[ModelName, frozenset[Endpoint]] = {
 # stay None). endpoints default to {home} unless the model is listed in _CROSS_CUTTING.
 _ROWS: tuple[tuple[ModelName, Endpoint, bool, bool, str, bool], ...] = (
     (ModelName.admet_ai, Endpoint.triage, False, True, "CODE-PKG", True),
-    (ModelName.admetlab3, Endpoint.triage, False, True, "CODE-API", True),
     (ModelName.bayesherg, Endpoint.herg, True, True, "CODE-PKG", True),
     (ModelName.cardiotox_net, Endpoint.herg, True, True, "CODE-PKG", True),
     (ModelName.ctoxpred2, Endpoint.herg, False, False, "CODE-PKG", True),
@@ -175,7 +170,7 @@ def registry_validate() -> None:
     """Assert the registry's structural invariants; raise ``RegistryError`` on any violation.
 
     Checks, in order: every ``ModelName`` has exactly one spec and vice versa; each spec's key matches
-    its ``name``; ``endpoints`` is a non-empty subset of ``Endpoint``; the five cross-cutting sets match
+    its ``name``; ``endpoints`` is a non-empty subset of ``Endpoint``; the four cross-cutting sets match
     IO_SPEC §2 exactly; ``env_manifest`` and ``entrypoint`` are both set or both ``None`` together; and
     every provenance carries a non-empty ``access_tag``. This is what the core gate calls.
     """
@@ -185,8 +180,8 @@ def registry_validate() -> None:
         missing = expected - keys
         extra = keys - expected
         raise RegistryError(f"REGISTRY keys != ModelName members (missing={missing}, extra={extra})")
-    if len(REGISTRY) != 28:
-        raise RegistryError(f"expected 28 specs, found {len(REGISTRY)}")
+    if len(REGISTRY) != 27:
+        raise RegistryError(f"expected 27 specs, found {len(REGISTRY)}")
 
     all_endpoints = set(Endpoint)
     for name, spec in REGISTRY.items():

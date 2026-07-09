@@ -333,7 +333,7 @@ def _efflux_read(records: Sequence[OutputRecord]) -> EffluxRead:
         ev = rec.endpoint_values or {}
         # Pgp_Broccatelli, sourced via the generalists through the t28 derived-pgp helper. The helper
         # returns None unless the record carries a valid [0,1] P-gp probability, so it self-filters which
-        # records contribute (only ADMET-AI / ADMETlab do).
+        # records contribute (only ADMET-AI does).
         pgp = extract_pgp(rec)
         if pgp.value is not None:
             signals.append(EffluxSignal(

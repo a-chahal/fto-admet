@@ -157,7 +157,7 @@ def cache_raw(
 ) -> Path:
     """Persist a verbatim upstream/web response under ``root/cache/<model>/<input_hash>.json``.
 
-    In scope now as infra (CLAUDE.md §4a): async/web adapters (``admetlab3``, ``ochem_ppb``, the web
+    In scope now as infra (CLAUDE.md §4a): async/web adapters (``ochem_ppb``, the web
     SOP transcriptions) cache their raw responses so a result stays reconstructible after the service
     silently changes. ``bytes``/``str`` payloads are written verbatim; a dict/list is serialized to JSON.
     Returns the path written. Keyed by (model, input_hash) so a re-run overwrites its own cache entry.

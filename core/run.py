@@ -15,7 +15,7 @@ Selection is exactly the contract query::
 
 ``in_bulk_loop`` is what keeps the web-only / shortlist models (``watanabe_*``, ``protox``,
 ``ctoxpred2``, ``cardiogenai``, ``aizynthfinder``, ``pbpk``) out of the automatic enumeration; they are
-run out of band and transcribed by hand. Cross-cutting models (``admet_ai``, ``admetlab3``,
+run out of band and transcribed by hand. Cross-cutting models (``admet_ai``,
 ``boiled_egg``, ``opera``, ``pgp``) carry several endpoints in their ``endpoints`` set, so the same
 model is legitimately dispatched under each endpoint it feeds (IO_SPEC §2).
 

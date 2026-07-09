@@ -27,7 +27,6 @@ EXPECTED_ENDPOINTS = {
 
 EXPECTED_MODELS = {
     "admet_ai",
-    "admetlab3",
     "bayesherg",
     "cardiotox_net",
     "ctoxpred2",
@@ -69,8 +68,8 @@ def test_endpoint_count_is_thirteen():
     assert len(Endpoint) == 13
 
 
-def test_model_count_is_twentynine():
-    assert len(ModelName) == 28
+def test_model_count_is_twentyseven():
+    assert len(ModelName) == 27
 
 
 def test_endpoint_membership_is_exact():

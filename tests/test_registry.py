@@ -1,8 +1,8 @@
 """Unit tests for core.registry (the curated ModelSpec / REGISTRY contract).
 
 REGISTRY is the single source of truth dispatch and every aggregator key off (CLAUDE.md §2), so these
-tests pin: exactly 28 specs one-per-ModelName, endpoints as a non-empty frozenset subset of Endpoint,
-the five cross-cutting sets from IO_SPEC §2, the None-env boundary for web-only + out-of-band models,
+tests pin: exactly 27 specs one-per-ModelName, endpoints as a non-empty frozenset subset of Endpoint,
+the four cross-cutting sets from IO_SPEC §2, the None-env boundary for web-only + out-of-band models,
 the gpu/bulk flags, non-empty provenance, and immutability. Gate:
 ``pytest tests/test_registry.py``. Laptop / core env, no box, no GPU.
 """
@@ -21,14 +21,11 @@ from core.registry import (
 )
 from core.schemas import InputRecord, OutputRecord
 
-# The five cross-cutting endpoint sets, transcribed from the t04 brief / IO_SPEC §2.
+# The four cross-cutting endpoint sets, transcribed from the t04 brief / IO_SPEC §2.
 EXPECTED_CROSS_CUTTING = {
     ModelName.admet_ai: {
         "triage", "herg", "metabolism", "clearance", "ppb", "solubility", "lipophilicity",
         "permeability", "distribution", "toxicity",
-    },
-    ModelName.admetlab3: {
-        "triage", "herg", "metabolism", "distribution", "ppb", "toxicity", "permeability",
     },
     ModelName.boiled_egg: {"distribution", "permeability"},
     ModelName.opera: {"lipophilicity", "clearance", "ppb"},
@@ -65,7 +62,7 @@ def test_registry_validate_passes():
 
 def test_one_spec_per_model_name():
     assert set(REGISTRY) == set(ModelName)
-    assert len(REGISTRY) == 28
+    assert len(REGISTRY) == 27
 
 
 def test_key_matches_spec_name():
