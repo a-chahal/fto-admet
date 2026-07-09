@@ -73,6 +73,29 @@ def opera_pka_b(pka_b: float) -> dict:
     }
 
 
+def admet_ai_logd(logd: float) -> dict:
+    return {
+        "model": ModelName.admet_ai,
+        "endpoint_values": {"Lipophilicity_AstraZeneca": logd},
+        "uncertainty": None,
+        "raw": {},
+        "provenance": PROV,
+    }
+
+
+def test_admet_ai_is_a_native_logd_lens_needing_no_pka():
+    """Regression: admet_ai's Lipophilicity_AstraZeneca is native logD7.4 and must enter the consensus
+    directly (no pKa conversion), like OPERA. It was previously silently dropped (no aggregator branch)."""
+    res = one([admet_ai_logd(1.1)])  # NO pKa provided anywhere - a native logD lens needs none
+    assert res.n_lenses == 1
+    lens = res.lenses[0]
+    assert lens.model == ModelName.admet_ai
+    assert lens.raw_kind == "logD"
+    assert lens.converted is False
+    assert lens.logd == pytest.approx(1.1)
+    assert res.consensus == pytest.approx(1.1)
+
+
 # --------------------------------------------------------------------------------------------------
 # Henderson-Hasselbalch conversion (the F-16 placeholder).
 # --------------------------------------------------------------------------------------------------

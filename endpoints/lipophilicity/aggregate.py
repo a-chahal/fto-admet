@@ -6,13 +6,15 @@ core env (no box, no GPU): it only consumes already-collected ``OutputRecord``s 
 onto one common quantity.
 
 Common quantity = **logD (log units) at pH 7.4**, anchored to the measured series logD ~= 1
-(IO_SPEC §2 lipophilicity; task t40). The three contributing lenses (IO_SPEC §1 #20/#21/#22):
+(IO_SPEC §2 lipophilicity; task t40). The contributing lenses (IO_SPEC §1 #20/#21/#22, plus the
+cross-cutting admet_ai logD7.4 head registered as a lipophilicity feeder):
 
-    model            field                       kind    transform onto the logD axis
-    -----            -----                       ----    ----------------------------
-    rdkit_crippen    logP_crippen (WLOGP lens)   logP    logP -> logD via the shared pKa (F-12)
-    swissadme        Consensus_logP (3-lens mean) logP   logP -> logD via the shared pKa (F-12)
+    model            field                        kind    transform onto the logD axis
+    -----            -----                        ----    ----------------------------
+    rdkit_crippen    logP_crippen (WLOGP lens)    logP    logP -> logD via the shared pKa (F-12)
+    swissadme        Consensus_logP (3-lens mean) logP    logP -> logD via the shared pKa (F-12)
     opera            LogD_pred (+ Conf_index_LogD) logD   identity; carry the native confidence
+    admet_ai         Lipophilicity_AstraZeneca    logD    identity (native logD7.4; no pKa conversion)
 
 LANDMINE F-12 (the point of this file): for the di-basic FTO series **logP != logD** at pH 7.4. A raw
 logP lens must NOT be dropped into a logD consensus unconverted - that silently corrupts the number.
@@ -280,6 +282,25 @@ def _aggregate_one(
                     logd=float(v),
                     converted=False,
                     confidence=conf,
+                )
+            )
+        elif rec.model == ModelName.admet_ai:
+            # ADMET-AI's Lipophilicity_AstraZeneca head is trained on logD7.4, so it is a NATIVE logD lens
+            # (identity, no pKa conversion), like OPERA. It is registered as a lipophilicity feeder
+            # (core.registry) and is the one lens needing no shaky logP->logD conversion. admet_ai emits
+            # no native per-prediction confidence here.
+            v = ev.get("Lipophilicity_AstraZeneca")
+            if v is None:
+                continue
+            lenses.append(
+                Lens(
+                    model=ModelName.admet_ai,
+                    label="ADMET-AI Lipophilicity_AstraZeneca (logD7.4)",
+                    raw_kind="logD",
+                    raw_value=float(v),
+                    logd=float(v),
+                    converted=False,
+                    confidence=None,
                 )
             )
         # any other model in the record set is not a lipophilicity lens -> ignored
