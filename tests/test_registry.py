@@ -46,7 +46,6 @@ GPU_MODELS = {ModelName.bayesherg, ModelName.cardiotox_net, ModelName.cardiogena
 
 # Models NOT in the bulk loop (bulk = "no").
 NOT_BULK_MODELS = {
-    ModelName.cardiogenai,
     ModelName.watanabe_renal,
     ModelName.pbpk,
     ModelName.watanabe_pgp_brain,

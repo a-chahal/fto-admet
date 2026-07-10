@@ -100,7 +100,7 @@ _ROWS: tuple[tuple[ModelName, Endpoint, bool, bool, str, bool], ...] = (
     (ModelName.admet_ai, Endpoint.triage, False, True, "CODE-PKG", True),
     (ModelName.bayesherg, Endpoint.herg, True, True, "CODE-PKG", True),
     (ModelName.cardiotox_net, Endpoint.herg, True, True, "CODE-PKG", True),
-    (ModelName.cardiogenai, Endpoint.herg, True, False, "CODE-PKG", True),
+    (ModelName.cardiogenai, Endpoint.herg, True, True, "CODE-PKG", True),
     (ModelName.smartcyp, Endpoint.metabolism, False, True, "CODE-PKG", True),
     (ModelName.fame3r, Endpoint.metabolism, False, True, "CODE-PKG", True),
     (ModelName.watanabe_renal, Endpoint.clearance, False, False, "WEB-ONLY", False),
