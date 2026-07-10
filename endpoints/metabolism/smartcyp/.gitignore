@@ -1,0 +1,8 @@
+# The SMARTCyp engine is a vendored upstream BINARY (an 18 MB Java .jar); like every model's binary
+# weights it is NEVER committed (CLAUDE.md 0.5). run.py resolves it at runtime from this path; the
+# README documents the one-line fetch step so it is reproducible. Same convention as
+# endpoints/herg/bayesherg/.gitignore (which gitignores its model_weights.pth).
+vendor/smartcyp-2.4.2.jar
+
+# isolated pixi env (the box-solved lock is committed; the env itself is not)
+.pixi/

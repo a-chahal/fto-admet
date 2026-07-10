@@ -1,22 +1,29 @@
-# Isolated env for the smartcyp adapter (t25) - SMARTCyp 3.0 site-of-metabolism (Python 3 + RDKit).
+# Isolated env for the smartcyp adapter - per-atom site-of-metabolism (SoM) ranking. ONE ENV PER MODEL
+# (CLAUDE.md 0.3). CPU-only, no CUDA, no GPU.
 #
-# STATUS: BLOCKED. This file is env INTENT only; there is intentionally NO committed `pixi.lock` yet, because
-# the authentic SMARTCyp 3.0 Python/RDKit source is currently unobtainable (`smartcyp.sund.ku.dk` returns
-# HTTP 503 on all paths; no PyPI package; the only alternatives are the forbidden legacy Java line or
-# third-party re-implementations with fabricated reactivity energies). See README.md "Why this is BLOCKED".
-# A lock is solved ON THE BOX (CLAUDE.md §0) only after the 3.0 source is vendored under `vendor/`.
+# This file is INTENT only (channels + deps). The exact resolved env is `pixi.lock`, SOLVED ON THE BOX
+# (Linux + conda-forge) and committed (CLAUDE.md 0.1). macOS cannot resolve the per-model env, so
+# `platforms` is linux-64 only and the lock carries a real `linux-64` section with package hashes (the
+# gate checks it to catch a fabricated/laptop-solved lock).
 #
-# LANDMINE (CLAUDE.md §4, task): SMARTCyp 3.0 is Python 3 + RDKit and needs NO `openjdk`. Only legacy
-# SMARTCyp 1.x/2.x were Java + CDK. If a JVM (`openjdk`) ever appears in this env, you are wiring the legacy
-# repo - stop. SMARTCyp 3.0 has no official PyPI package, so the 3.0 source is vendored and imported directly;
-# the env itself is just RDKit + Python (exact pins to be read from the 3.0 source once vendored).
+# JVM OVERRIDE (owner-directed, explicit and authorized): the standing SMARTCyp landmine in CLAUDE.md
+# says the metabolism endpoint is JVM-free and only the legacy SMARTCyp 1.x/2.x line is Java+CDK. The
+# owner has DIRECTED this adapter to use the legacy SMARTCyp 2.4.2 Java `.jar` (the authentic 3.0
+# Python/RDKit source is unobtainable: KU server 503, no PyPI, no public source repo - see README). So
+# `openjdk` IS required here, on purpose, and that is the authorized exception to the landmine, NOT a
+# mistake. The engine is `vendor/smartcyp-2.4.2.jar`, run via `java -jar` (see run.py).
+#
+# Deps: rdkit builds each molecule and writes an atom-ordered SDF so SMARTCyp's atom numbering is PINNED
+# to the RDKit atom index (guarantees co-ranking alignment with FAME3R at the aggregator). openjdk
+# provides the JRE that runs the jar. No pypi deps.
 [workspace]
 name = "smartcyp"
 version = "0.1.0"
-description = "SMARTCyp 3.0 per-atom site-of-metabolism (3A4 + 2D6/2C9) adapter for the metabolism endpoint - Python/RDKit, no JVM (BLOCKED: 3.0 source unobtainable)"
+description = "SMARTCyp 2.4.2 per-atom site-of-metabolism (3A4 + 2D6/2C9) adapter for the metabolism endpoint - legacy Java jar via subprocess (owner-directed JVM override)"
 channels = ["conda-forge"]
 platforms = ["linux-64"]
 
 [dependencies]
 python = "3.11.*"
-rdkit = "*"   # the sole scientific dep of SMARTCyp 3.0; NO openjdk. Pin exactly to the 3.0 source's need once vendored.
+rdkit = "*"          # builds each molecule + writes an atom-ordered SDF (pins SMARTCyp atom numbering to RDKit index)
+openjdk = ">=11"     # JRE to run vendor/smartcyp-2.4.2.jar (owner-directed override of the JVM-free landmine)
