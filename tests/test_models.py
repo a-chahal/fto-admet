@@ -29,7 +29,6 @@ EXPECTED_MODELS = {
     "admet_ai",
     "bayesherg",
     "cardiotox_net",
-    "ctoxpred2",
     "cardiogenai",
     "smartcyp",
     "fame3r",
@@ -68,8 +67,8 @@ def test_endpoint_count_is_thirteen():
     assert len(Endpoint) == 13
 
 
-def test_model_count_is_twentyseven():
-    assert len(ModelName) == 27
+def test_model_count_is_twentysix():
+    assert len(ModelName) == 26
 
 
 def test_endpoint_membership_is_exact():

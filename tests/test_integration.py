@@ -71,7 +71,7 @@ def test_registry_validate_is_green():
 
 def test_modelname_and_registry_are_a_bijection():
     assert set(REGISTRY) == set(ModelName)
-    assert len(REGISTRY) == len(ModelName) == 27
+    assert len(REGISTRY) == len(ModelName) == 26
     for name, spec in REGISTRY.items():
         assert spec.name == name, name
 

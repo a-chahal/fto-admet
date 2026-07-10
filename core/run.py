@@ -14,7 +14,7 @@ Selection is exactly the contract query::
     [spec for spec in REGISTRY.values() if endpoint in spec.endpoints and spec.in_bulk_loop]
 
 ``in_bulk_loop`` is what keeps the web-only / shortlist models (``watanabe_*``, ``protox``,
-``ctoxpred2``, ``cardiogenai``, ``aizynthfinder``, ``pbpk``) out of the automatic enumeration; they are
+``cardiogenai``, ``aizynthfinder``, ``pbpk``) out of the automatic enumeration; they are
 run out of band and transcribed by hand. Cross-cutting models (``admet_ai``,
 ``boiled_egg``, ``opera``, ``pgp``) carry several endpoints in their ``endpoints`` set, so the same
 model is legitimately dispatched under each endpoint it feeds (IO_SPEC §2).

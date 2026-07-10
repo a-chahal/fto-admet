@@ -7,7 +7,7 @@ resolves a model's env + entrypoint here; each endpoint's ``aggregate.py`` selec
 ``pgp``) carry every endpoint their output feeds, not just their home folder (IO_SPEC §2).
 
 Immutability is the point: specs are a reviewed contract, so ``ModelSpec`` and ``Provenance`` are
-frozen dataclasses and ``REGISTRY`` is populated once at import. Counts are load-bearing: exactly 27
+frozen dataclasses and ``REGISTRY`` is populated once at import. Counts are load-bearing: exactly 26
 specs, one per ``ModelName`` (SETTLED §5; openadmet + admetlab3 removed - the first redundant with
 admet_ai, the second a chronically-unstable web service); the dropped/replaced upstreams (deephit,
 spielvogel, cardiodpi, fame3; CLAUDE.md §4) have no member and cannot appear.
@@ -100,7 +100,6 @@ _ROWS: tuple[tuple[ModelName, Endpoint, bool, bool, str, bool], ...] = (
     (ModelName.admet_ai, Endpoint.triage, False, True, "CODE-PKG", True),
     (ModelName.bayesherg, Endpoint.herg, True, True, "CODE-PKG", True),
     (ModelName.cardiotox_net, Endpoint.herg, True, True, "CODE-PKG", True),
-    (ModelName.ctoxpred2, Endpoint.herg, False, False, "CODE-PKG", True),
     (ModelName.cardiogenai, Endpoint.herg, True, False, "CODE-PKG", True),
     (ModelName.smartcyp, Endpoint.metabolism, False, True, "CODE-PKG", True),
     (ModelName.fame3r, Endpoint.metabolism, False, True, "CODE-PKG", True),
@@ -180,8 +179,8 @@ def registry_validate() -> None:
         missing = expected - keys
         extra = keys - expected
         raise RegistryError(f"REGISTRY keys != ModelName members (missing={missing}, extra={extra})")
-    if len(REGISTRY) != 27:
-        raise RegistryError(f"expected 27 specs, found {len(REGISTRY)}")
+    if len(REGISTRY) != 26:
+        raise RegistryError(f"expected 26 specs, found {len(REGISTRY)}")
 
     all_endpoints = set(Endpoint)
     for name, spec in REGISTRY.items():

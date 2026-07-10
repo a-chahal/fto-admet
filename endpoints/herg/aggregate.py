@@ -11,8 +11,7 @@ endpoint RUNS and yields a usable provisional read.
 The CALIBRATED gate is DEFERRED. Everything the real decision needs to be trustworthy is NOT decided here:
   * the weighting function ("weight toward sensitivity" is a philosophy, not numbers),
   * the decision thresholds (what P(block) / spread / vote-confidence separates go from no-go),
-  * what counts as a "split" ensemble and how the BayeshERG alea/epis + CToxPred2 multichannel
-    adjudicator resolves it,
+  * what counts as a "split" ensemble and how the BayeshERG alea/epis adjudicator resolves it,
   * the pIC50 -> P(block) mapping for CardioGenAI's discriminative head (flag F-1).
 Every number that stands in for those decisions is a ``PLACEHOLDER_*`` constant collected in ONE block
 below and is an UNCALIBRATED heuristic. The provisional flag is labeled provisional/uncalibrated
@@ -26,14 +25,12 @@ shape WITHOUT deciding weights:
   BayeshERG      endpoint_values["P_block"]         identity P(block); carry uncertainty.aleatoric/epistemic
   CardioTox net  endpoint_values["P_block"]         identity P(block) (positional array upstream)
   ADMET-AI       endpoint_values["hERG"]            identity P(block) pre-screen head
-  CToxPred2      endpoint_values["hERG_vote"] +      0/1 VOTE weighted by uncertainty.confidence -
-                 uncertainty.confidence                 a VOTE, NEVER averaged into the probability pool
   CardioGenAI    endpoint_values["hERG pIC50"]      PLACEHOLDER logistic pIC50 -> P(block), centered on
                  (literal space)                        the pIC50 = 5.0 non-blocker cutoff (F-1 placeholder)
 
-The CToxPred2 vote is the load-bearing landmine: it is a confidence-weighted 0/1 VOTE and must NOT be
-mixed into the probability mean (IO_SPEC §2, CLAUDE.md §4). It is kept as a separate read and only
-consulted as a vote in the flag logic.
+The aggregator also carries generic support for a 0/1 confidence-weighted blocker VOTE read: such a
+vote is NEVER averaged into the probability mean (IO_SPEC §2, CLAUDE.md §4), only consulted in the flag
+logic. No model currently emits one.
 """
 
 from __future__ import annotations
@@ -56,12 +53,11 @@ from core.schemas import OutputRecord
 BAYESHERG_PBLOCK_KEY = "P_block"          # bayesherg: identity P(block)
 CARDIOTOX_PBLOCK_KEY = "P_block"          # cardiotox_net: identity P(block)
 ADMET_AI_HERG_KEY = "hERG"                # admet_ai: pre-screen P(block) classification head
-CTOXPRED2_VOTE_KEY = "hERG_vote"          # ctoxpred2: 0/1 blocker VOTE (argmax), NOT a probability
 CARDIOGENAI_PIC50_KEY = "hERG pIC50"      # cardiogenai: literal label WITH a space; raw pIC50 (not P)
 
-# Which models contribute a real P(block) probability (go into the ensemble mean) vs. the CToxPred2
-# vote (which never joins the mean). Read by field presence per record, so a future model emitting the
-# same field is picked up too; this list only documents the current, settled membership.
+# Which models contribute a real P(block) probability (go into the ensemble mean). Read by field
+# presence per record, so a future model emitting the same field is picked up too; this list only
+# documents the current, settled membership.
 PROBABILITY_MODEL_KEYS: dict[ModelName, str] = {
     ModelName.bayesherg: BAYESHERG_PBLOCK_KEY,
     ModelName.cardiotox_net: CARDIOTOX_PBLOCK_KEY,
@@ -86,7 +82,7 @@ SPECIALIST_MODELS: frozenset[ModelName] = frozenset(
 PLACEHOLDER_HIGH_MEAN = 0.5          # ensemble-mean P(block) at/above this -> provisional HIGH liability
 PLACEHOLDER_MEDIUM_MEAN = 0.3        # ensemble-mean P(block) in [0.3, 0.5) -> provisional MEDIUM
 PLACEHOLDER_SPECIALIST_ALARM = 0.7   # any single specialist P(block) at/above this -> provisional HIGH
-PLACEHOLDER_VOTE_CONF = 0.5          # CToxPred2 votes BLOCK at confidence at/above this -> provisional HIGH
+PLACEHOLDER_VOTE_CONF = 0.5          # a blocker VOTE at confidence at/above this -> provisional HIGH
 PLACEHOLDER_SPREAD_CAUTION = 0.4     # ensemble spread (max-min) at/above this biases one level up (caution)
 
 # F-1 placeholder: CardioGenAI pIC50 -> P(block) via a logistic centered on the pIC50 = 5.0 non-blocker
@@ -116,7 +112,7 @@ class HergFlag(StrEnum):
 
 
 class ReadKind(StrEnum):
-    """Whether a harmonized read is a P(block) probability or a 0/1 vote (CToxPred2)."""
+    """Whether a harmonized read is a P(block) probability or a 0/1 blocker vote."""
 
     probability = "probability"
     vote = "vote"
@@ -127,7 +123,7 @@ class HergModelRead(BaseModel):
 
     ``kind == probability``: ``p_block`` is set (identity, or the F-1 placeholder map for CardioGenAI),
     and the read joins the ensemble mean. ``kind == vote``: ``vote`` (0/1) + ``confidence`` are set and
-    the read is a CToxPred2-style VOTE that NEVER enters the probability pool. ``aleatoric`` /
+    the read is a 0/1 blocker VOTE that NEVER enters the probability pool. ``aleatoric`` /
     ``epistemic`` carry BayeshERG's native split for the (deferred) adjudicator.
     """
 
@@ -148,7 +144,7 @@ class HergModelRead(BaseModel):
 class MoleculeHerg(BaseModel):
     """One molecule's harmonized hERG reads + the PROVISIONAL (uncalibrated) flag.
 
-    ``ensemble_mean`` / ``ensemble_spread`` are over the PROBABILITY reads only (the CToxPred2 vote is
+    ``ensemble_mean`` / ``ensemble_spread`` are over the PROBABILITY reads only (a vote read is
     excluded by contract). ``provisional_flag`` is a placeholder, sensitivity-leaning read; ``calibrated``
     is always False and ``is_gate`` always True: hERG IS the gate, but this specific call is not yet the
     calibrated one.
@@ -201,8 +197,7 @@ def _harmonize(records: Sequence[OutputRecord]) -> list[HergModelRead]:
     """Map each contributing record onto the common hERG read shape. NO weighting decided here.
 
     Probability models (BayeshERG, CardioTox net, ADMET-AI) map by identity from their P(block) field;
-    CardioGenAI maps through the PLACEHOLDER F-1 pIC50->P(block) logistic; CToxPred2 stays a 0/1 VOTE
-    weighted by its confidence and is NEVER folded into the probability pool. Missing/None fields are
+    CardioGenAI maps through the PLACEHOLDER F-1 pIC50->P(block) logistic. Missing/None fields are
     skipped (a model that did not run simply does not contribute a read).
     """
     reads: list[HergModelRead] = []
@@ -227,26 +222,6 @@ def _harmonize(records: Sequence[OutputRecord]) -> list[HergModelRead]:
                         aleatoric=(unc.aleatoric if unc else None),
                         epistemic=(unc.epistemic if unc else None),
                         notes=["identity P(block) (IO_SPEC §2)"],
-                    )
-                )
-            continue
-
-        # CToxPred2: 0/1 vote weighted by confidence - a VOTE, never in the probability mean.
-        if model == ModelName.ctoxpred2:
-            vote = ev.get(CTOXPRED2_VOTE_KEY)
-            if vote is not None:
-                reads.append(
-                    HergModelRead(
-                        model=model,
-                        kind=ReadKind.vote,
-                        source_field=CTOXPRED2_VOTE_KEY,
-                        is_specialist=False,  # multichannel secondary; contributes a vote, not a solo alarm
-                        vote=int(vote),
-                        confidence=(unc.confidence if unc else None),
-                        notes=[
-                            "0/1 blocker VOTE weighted by confidence; NOT averaged into the probability "
-                            "pool (IO_SPEC §2, CLAUDE.md §4 landmine)."
-                        ],
                     )
                 )
             continue
@@ -294,7 +269,7 @@ def _provisional_flag(reads: Sequence[HergModelRead]) -> tuple[HergFlag, float |
     DEFERRED (CLAUDE.md §4a): every threshold used here is a ``PLACEHOLDER_*`` constant, not the
     calibrated gate. Rules (sensitivity-leaning, so HIGH is checked first):
       HIGH   if ensemble-mean P(block) >= PLACEHOLDER_HIGH_MEAN, OR any single SPECIALIST P(block) >=
-             PLACEHOLDER_SPECIALIST_ALARM, OR CToxPred2 votes BLOCK at confidence >= PLACEHOLDER_VOTE_CONF.
+             PLACEHOLDER_SPECIALIST_ALARM, OR a blocker VOTE lands at confidence >= PLACEHOLDER_VOTE_CONF.
       MEDIUM if ensemble-mean in [PLACEHOLDER_MEDIUM_MEAN, PLACEHOLDER_HIGH_MEAN).
       LOW    if ensemble-mean < PLACEHOLDER_MEDIUM_MEAN with no specialist alarm and no block vote.
     Ensemble disagreement (spread) is the INDIRECT uncertainty: a wide spread (>= PLACEHOLDER_SPREAD_CAUTION)
@@ -331,7 +306,7 @@ def _provisional_flag(reads: Sequence[HergModelRead]) -> tuple[HergFlag, float |
             reasons.append(f"a specialist P(block) >= {PLACEHOLDER_SPECIALIST_ALARM} (placeholder).")
         if block_vote_alarm:
             reasons.append(
-                f"CToxPred2 votes BLOCK at confidence >= {PLACEHOLDER_VOTE_CONF} (placeholder vote, not a prob)."
+                f"a blocker VOTE lands at confidence >= {PLACEHOLDER_VOTE_CONF} (placeholder vote, not a prob)."
             )
         return HergFlag.HIGH, mean, spread, reasons
 
@@ -347,7 +322,7 @@ def _provisional_flag(reads: Sequence[HergModelRead]) -> tuple[HergFlag, float |
     else:
         # Only vote(s) present, none tripping the block alarm -> provisional LOW with a caveat.
         flag = HergFlag.LOW
-        reasons.append("only a non-blocking CToxPred2 vote present (no probability reads); provisional LOW.")
+        reasons.append("only a non-blocking VOTE present (no probability reads); provisional LOW.")
 
     if spread is not None and spread >= PLACEHOLDER_SPREAD_CAUTION and flag is HergFlag.LOW:
         flag = HergFlag.MEDIUM
@@ -425,8 +400,8 @@ def aggregate(
         notes=[
             "hERG is the PRIMARY go/no-go gate; this aggregator harmonizes every contributing read onto a "
             "common P(block) in [0,1] (IO_SPEC §2).",
-            "CToxPred2 is a confidence-weighted 0/1 VOTE and is NEVER averaged into the probability pool "
-            "(CLAUDE.md §4 landmine, IO_SPEC §2).",
+            "A 0/1 blocker VOTE (if any model emits one) is confidence-weighted and NEVER averaged into "
+            "the probability pool (CLAUDE.md §4 landmine, IO_SPEC §2).",
             "DEFERRED (CLAUDE.md §4a): the flag is PROVISIONAL and UNCALIBRATED - the calibrated weighting/"
             "thresholds and the F-1 pIC50->P(block) mapping are placeholders (PLACEHOLDER_* block). Replace "
             "them when the gate is calibrated. Status: needs_aaran.",

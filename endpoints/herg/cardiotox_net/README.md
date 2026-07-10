@@ -10,7 +10,7 @@ hERG model: its output is P(hERG block), fed to the hERG gate's core probability
 `in_bulk_loop = True` - CardioTox net is a bulk-loop primary. Each molecule gets one **P(hERG block)**
 in `(0, 1)` (**UP = more likely blocker**, more cardiotoxic), mapped straight into
 `endpoint_values["P_block"]` (identity - it is already a probability). The hERG gate math that combines
-this with the other hERG models (BayeshERG, ADMET-AI, ADMETlab, the CToxPred2 vote) is DEFERRED to t52;
+this with the other hERG models (BayeshERG, ADMET-AI, CardioGenAI) is DEFERRED to t52;
 this adapter only emits the raw per-model signal.
 
 ## The ensemble

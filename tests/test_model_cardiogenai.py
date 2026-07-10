@@ -1,6 +1,6 @@
 """Smoke test for the cardiogenai adapter - a ``@pytest.mark.model`` test (t24).
 
-Same shape as the t11 pksmart / t23 ctoxpred2 smokes (CLAUDE.md §5, SETTLED §8): the test runs in the
+Same shape as the t11 pksmart smoke (CLAUDE.md §5, SETTLED §8): the test runs in the
 **core** env (it may import ``core`` + pytest) but **shells out** to the model's ``run.py`` in that
 model's **isolated pixi env** via ``pixi run --manifest-path``, exactly as ``core.dispatch`` does. So it
 drives the adapter on the box AND validates the output against the real ``core.schemas.OutputRecord``.

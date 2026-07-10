@@ -5,8 +5,7 @@ this endpoint must guarantee (task t52, IO_SPEC §2 "hERG (GATE)" / §3 F-1, CLA
 
 - HARMONIZATION SHAPE: each contributing read maps onto the common P(block) shape - BayeshERG /
   CardioTox net / ADMET-AI as identity probabilities (BayeshERG carrying alea/epis); CardioGenAI's
-  "hERG pIC50" (literal space) through the PLACEHOLDER F-1 logistic; CToxPred2 stays a 0/1 VOTE.
-- LANDMINE: CToxPred2 is a confidence-weighted VOTE, NEVER averaged into the probability pool.
+  "hERG pIC50" (literal space) through the PLACEHOLDER F-1 logistic.
 - DEFERRED: the flag is PROVISIONAL/UNCALIBRATED - every threshold is a PLACEHOLDER_* constant, the
   result is marked ``deferred``, and the module carries an explicit DEFERRED marker.
 """
@@ -21,7 +20,6 @@ from endpoints.herg.aggregate import (
     BAYESHERG_PBLOCK_KEY,
     CARDIOGENAI_PIC50_KEY,
     CARDIOTOX_PBLOCK_KEY,
-    CTOXPRED2_VOTE_KEY,
     PLACEHOLDER_HIGH_MEAN,
     PLACEHOLDER_MEDIUM_MEAN,
     PLACEHOLDER_PIC50_CENTER,
@@ -68,16 +66,6 @@ def admet_ai_rec(p_block) -> dict:
     }
 
 
-def ctoxpred2_rec(vote, confidence=None) -> dict:
-    return {
-        "model": ModelName.ctoxpred2,
-        "endpoint_values": {CTOXPRED2_VOTE_KEY: vote},
-        "uncertainty": {"confidence": confidence},
-        "raw": {},
-        "provenance": PROV,
-    }
-
-
 def cardiogenai_rec(pic50) -> dict:
     return {
         "model": ModelName.cardiogenai,
@@ -115,25 +103,6 @@ def test_cardiotox_and_admet_ai_identity_pblock():
     assert ai.kind is ReadKind.probability and ai.p_block == 0.3
     # ADMET-AI is a generalist pre-screen, not a specialist that can raise a solo alarm.
     assert ai.is_specialist is False
-
-
-def test_ctoxpred2_stays_a_vote_not_a_probability():
-    """LANDMINE: CToxPred2 is a 0/1 VOTE + confidence, never a probability in the pool."""
-    mol = aggregate({"m": [ctoxpred2_rec(1, confidence=0.9)]}).molecules[0]
-    r = _read_for(mol, ModelName.ctoxpred2)
-    assert r.kind is ReadKind.vote
-    assert r.vote == 1
-    assert r.confidence == 0.9
-    assert r.p_block is None            # never harmonized into a probability
-    assert mol.n_probability_reads == 0  # and never counted as one
-
-
-def test_ctoxpred2_vote_excluded_from_ensemble_mean():
-    """The vote must not move the probability mean: mean is over the one prob read only."""
-    recs = [bayesherg_rec(0.20), ctoxpred2_rec(1, confidence=0.99)]
-    mol = aggregate({"m": recs}).molecules[0]
-    assert mol.n_probability_reads == 1
-    assert mol.ensemble_mean == 0.20  # the 0/1 vote did NOT pull the mean up
 
 
 def test_cardiogenai_pic50_through_placeholder_logistic():
@@ -179,12 +148,6 @@ def test_flag_high_on_single_specialist_alarm_even_if_mean_low():
     assert mol.provisional_flag is HergFlag.HIGH
 
 
-def test_flag_high_on_ctoxpred2_block_vote_alone():
-    """A confident CToxPred2 BLOCK vote trips HIGH with no probability reads at all."""
-    mol = aggregate({"m": [ctoxpred2_rec(1, confidence=0.8)]}).molecules[0]
-    assert mol.provisional_flag is HergFlag.HIGH
-
-
 def test_flag_medium_on_mid_mean():
     mol = aggregate({"m": [bayesherg_rec(0.35), cardiotox_rec(0.35)]}).molecules[0]
     assert PLACEHOLDER_MEDIUM_MEAN <= mol.ensemble_mean < PLACEHOLDER_HIGH_MEAN
@@ -205,12 +168,6 @@ def test_spread_biases_low_up_to_medium_toward_caution():
     assert mol.ensemble_mean < PLACEHOLDER_MEDIUM_MEAN
     assert mol.ensemble_spread >= 0.4
     assert mol.provisional_flag is HergFlag.MEDIUM
-
-
-def test_non_blocking_ctoxpred2_vote_does_not_trip_high():
-    """A vote of 0 (non-blocker) never raises the flag - only a confident BLOCK vote does."""
-    mol = aggregate({"m": [ctoxpred2_rec(0, confidence=0.99)]}).molecules[0]
-    assert mol.provisional_flag is not HergFlag.HIGH
 
 
 def test_empty_bundle_is_unknown_not_a_fabricated_verdict():

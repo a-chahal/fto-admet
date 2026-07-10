@@ -62,7 +62,7 @@ class Uncertainty(BaseModel):
     Field map to the native signals:
     - ``aleatoric`` / ``epistemic`` - BayeshERG MC-dropout decomposition.
     - ``fold_error_low`` / ``fold_error_high`` - PKSmart-style fold-error interval.
-    - ``confidence`` (0-1) - a generic scalar confidence (e.g. CToxPred2's percent-string once parsed).
+    - ``confidence`` (0-1) - a generic scalar confidence (e.g. a percent-string confidence once parsed).
     - ``ad_in_domain`` / ``ad_index`` / ``conf_index`` - OPERA's ``AD`` (bool) / ``AD_index`` /
       ``Conf_index``. ADStatus is *folded in here* rather than kept separate: OPERA emits all three per
       endpoint alongside the prediction, so one envelope keeps them together with the other signals.

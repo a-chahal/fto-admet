@@ -48,8 +48,7 @@ def test_select_models_herg_is_exactly_the_bulk_loop_models():
     assert names == {
         ModelName.bayesherg, ModelName.cardiotox_net, ModelName.admet_ai,
     }
-    # the non-bulk hERG models are excluded (shortlist / gated), never enumerated
-    assert ModelName.ctoxpred2 not in names
+    # the non-bulk hERG model is excluded (shortlist / gated), never enumerated
     assert ModelName.cardiogenai not in names
 
 
