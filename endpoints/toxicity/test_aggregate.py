@@ -1,276 +1,149 @@
-"""Tests for the toxicity aggregator (task t49): a bulk-substitute panel + a ProTox confirmatory shortlist.
+"""Tests for the toxicity aggregator: a panel of independent single-source features.
 
-Synthetic ``OutputRecord``-shaped inputs only (laptop, core env - no box, no GPU). They exercise what this
-two-tier endpoint exists to guarantee (task t49, IO_SPEC §2, §3 F-5):
-
-- the BULK block is built from the automatable heads: ADMET-AI classifier heads (DILI / hERG / AMES /
-  Carcinogens_Lagunin / ClinTox / Skin_Reaction) as per-endpoint P(toxic), and toxicophores as a soft alert flag;
-- ADMET-AI ``LD50_Zhu`` is a MAGNITUDE read (log 1/(mol/kg), up=toxic), NOT a probability;
-- the SHORTLIST block is the ProTox web read (LD50 mg/kg, class 1-6, per-endpoint Active/Inactive + prob);
-- the two blocks are SEPARATE and (F-5) there is NO path/field that merges ``LD50_Zhu`` with ProTox LD50;
-- multi-model same-endpoint probabilities average on the SAME [0,1] scale; missing sources degrade cleanly.
+Synthetic ``OutputRecord``-shaped inputs (laptop, core env - no box, no GPU). They pin what this endpoint
+guarantees after the shape change:
+- each ADMET-AI classifier head becomes its OWN single-source P(toxic) feature (score = the value,
+  uncertainty undefined for one point);
+- ``LD50_Zhu`` is a SEPARATE ``acute_ld50`` magnitude feature (log 1/(mol/kg), up = more toxic), never
+  a probability and never folded into another feature;
+- the toxicophores count becomes ``tox_alerts`` with the matched names summarized into the source note;
+- a feature is emitted ONLY when its source key is present (no fabricated zeros); the output is the
+  uniform ``core.aggregate`` shape.
 """
 
 from __future__ import annotations
 
-import math
-
 from core.models import Endpoint, ModelName
 from endpoints.toxicity.aggregate import (
-    BulkPanel,
-    ProToxShortlist,
+    ADMET_AI_PROB_HEADS,
+    LD50_FEATURE,
+    TOX_ALERTS_FEATURE,
     aggregate,
 )
 
 PROV = {"model": "test"}
 
 
-def admet_ai_rec(**heads) -> dict:
+def admet_ai(**heads) -> dict:
     """An ADMET-AI-shaped record: classifier/regression heads live directly in endpoint_values (TDC names)."""
-    return {"model": ModelName.admet_ai, "endpoint_values": dict(heads), "provenance": PROV}
+    return {"model": ModelName.admet_ai, "endpoint_values": dict(heads),
+            "uncertainty": None, "raw": {}, "provenance": PROV}
 
 
+def toxicophores(count=2, names=None) -> dict:
+    """A toxicophores-shaped record: count in endpoint_values, matched names in raw."""
+    return {"model": ModelName.toxicophores,
+            "endpoint_values": {"tox_alert_count": count},
+            "uncertainty": None, "raw": {"tox_alert_names": names if names is not None else ["nitro group", "epoxide"]},
+            "provenance": PROV}
 
 
-def toxicophores_rec(hit=True, count=2, names=None, catalog="BRENK") -> dict:
-    """A toxicophores-shaped record: hit/count/catalog in endpoint_values, matched names in raw."""
-    return {
-        "model": ModelName.toxicophores,
-        "endpoint_values": {"tox_alert_hit": hit, "tox_alert_count": count, "catalog": catalog},
-        "raw": {"tox_alert_names": names or ["nitro group", "michael acceptor"]},
-        "provenance": PROV,
-    }
+def _feat(mol, name):
+    return next(f for f in mol.features if f.feature == name)
 
 
-def protox_rec(ld50=350.0, tox_class=3, accuracy=68.0, endpoints=None, nested=False) -> dict:
-    """A ProTox-shaped record. ``nested=True`` uses the SOP transcription shape (scalars under raw.predictions)."""
-    endpoints = endpoints if endpoints is not None else {
-        "Hepatotoxicity": {"call": "Active", "probability": 0.71},
-        "Carcinogenicity": {"call": "Inactive", "probability": 0.62},
-    }
-    if nested:
-        return {
-            "model": ModelName.protox,
-            "endpoint_values": {},
-            "raw": {
-                "predictions": {
-                    "LD50": {"value": ld50},
-                    "tox_class": {"value": tox_class},
-                    "prediction_accuracy": {"value": accuracy},
-                    "endpoints": endpoints,
-                }
-            },
-            "provenance": PROV,
-        }
-    return {
-        "model": ModelName.protox,
-        "endpoint_values": {"LD50": ld50, "tox_class": tox_class, "prediction_accuracy": accuracy},
-        "raw": {"endpoints": endpoints},
-        "provenance": PROV,
-    }
+def _has(mol, name) -> bool:
+    return any(f.feature == name for f in mol.features)
 
 
-# ---------------------------------------------------------------------------------------------------
-# Bulk panel: per-endpoint P(toxic).
-# ---------------------------------------------------------------------------------------------------
+# -------------------------------------------------------------------------- one feature per ADMET-AI head
+def test_each_admet_ai_head_becomes_its_own_single_source_feature():
+    rec = admet_ai(**{"DILI": 0.8, "AMES": 0.6, "hERG": 0.4, "NR-AR": 0.1,
+                      "SR-p53": 0.3, "Carcinogens_Lagunin": 0.2})
+    mol = aggregate({"m": [rec]}).molecules[0]
+    got = {f.feature: f.score for f in mol.features}
+    assert got == {"dili": 0.8, "ames_mutagenicity": 0.6, "herg_cardiotox": 0.4,
+                   "nr_ar": 0.1, "sr_p53": 0.3, "carcinogenicity": 0.2}
+    dili = _feat(mol, "dili")
+    assert dili.n_sources == 1 and dili.uncertainty is None       # single source -> no disagreement
+    assert dili.sources[0].model == "admet_ai"
+    assert dili.unit == "P(dili) [0,1] (up = more toxic)"
 
 
-def test_admet_ai_classifier_heads_become_per_endpoint_p_toxic():
-    res = aggregate({"m1": [admet_ai_rec(DILI=0.8, hERG=0.4, AMES=0.6,
-                                         Carcinogens_Lagunin=0.2, ClinTox=0.9, Skin_Reaction=0.1)]})
-    assert res.endpoint is Endpoint.toxicity
-    assert res.n_molecules == 1
-    panel = {be.endpoint: be for be in res.molecules[0].bulk.probability_panel}
-    assert panel["hepatotoxicity_dili"].p_toxic == 0.8
-    assert panel["herg_blockade"].p_toxic == 0.4
-    assert panel["mutagenicity_ames"].p_toxic == 0.6
-    assert panel["carcinogenicity"].p_toxic == 0.2
-    assert panel["clinical_toxicity"].p_toxic == 0.9
-    assert panel["skin_reaction"].p_toxic == 0.1
-    # every panel entry is a probability kind with its single contributing model recorded.
-    for be in res.molecules[0].bulk.probability_panel:
-        assert be.kind == "probability"
-        assert [c.model for c in be.contributions] == [ModelName.admet_ai]
+def test_full_tox21_panel_maps_every_head_by_its_feature_name():
+    # feed every mapped head at a distinct value, assert the feature-name -> value mapping is exact.
+    values = {key: round(0.01 * (i + 1), 2) for i, key in enumerate(ADMET_AI_PROB_HEADS.values())}
+    mol = aggregate({"m": [admet_ai(**values)]}).molecules[0]
+    for feature, key in ADMET_AI_PROB_HEADS.items():
+        assert _feat(mol, feature).score == values[key]
 
 
+# -------------------------------------------------------------------------- LD50 is a separate magnitude
+def test_ld50_zhu_is_a_separate_magnitude_feature_not_a_probability():
+    mol = aggregate({"m": [admet_ai(LD50_Zhu=2.3, DILI=0.5)]}).molecules[0]
+    ld50 = _feat(mol, LD50_FEATURE)
+    assert ld50.score == 2.3
+    assert ld50.unit == "log(1/(mol/kg)) (up = more acutely toxic)"
+    assert ld50.n_sources == 1 and ld50.uncertainty is None
+    # LD50 never becomes a probability feature; DILI stays its own feature.
+    assert _has(mol, "dili")
+    assert LD50_FEATURE not in ADMET_AI_PROB_HEADS
 
 
-def test_same_endpoint_probabilities_average_on_one_scale():
-    # ADMET-AI hERG and (hypothetically) another same-endpoint source would average; here two records
-    # both carry the ADMET-AI hERG head, so the endpoint groups and the mean is taken.
-    res = aggregate({"m1": [admet_ai_rec(hERG=0.4), admet_ai_rec(hERG=0.6)]})
-    herg = next(be for be in res.molecules[0].bulk.probability_panel if be.endpoint == "herg_blockade")
-    assert herg.p_toxic == 0.5
-    assert {c.p_toxic for c in herg.contributions} == {0.4, 0.6}
+# -------------------------------------------------------------------------- toxicophores count -> tox_alerts
+def test_toxicophores_count_becomes_tox_alerts_with_names_in_note():
+    mol = aggregate({"m": [toxicophores(count=2, names=["nitro group", "michael acceptor"])]}).molecules[0]
+    alerts = _feat(mol, TOX_ALERTS_FEATURE)
+    assert alerts.score == 2 and alerts.n_sources == 1
+    assert alerts.unit == "count of BRENK tox alerts (0 = clean)"
+    assert alerts.sources[0].note == "nitro group; michael acceptor"
 
 
-def test_out_of_range_or_missing_probability_is_skipped_never_fabricated():
-    res = aggregate({"m1": [admet_ai_rec(DILI=1.4, hERG=None, AMES=0.5)]})
-    panel = {be.endpoint for be in res.molecules[0].bulk.probability_panel}
-    assert panel == {"mutagenicity_ames"}  # 1.4 (out of range) and None both dropped, not coerced
+def test_tox_alerts_zero_count_is_still_emitted_as_a_real_read():
+    mol = aggregate({"m": [toxicophores(count=0, names=[])]}).molecules[0]
+    alerts = _feat(mol, TOX_ALERTS_FEATURE)
+    assert alerts.score == 0 and alerts.sources[0].note is None
 
 
-def test_toxicophores_is_a_soft_alert_not_a_probability():
-    res = aggregate({"m1": [toxicophores_rec(hit=True, count=2, names=["nitro group", "epoxide"])]})
-    bulk = res.molecules[0].bulk
-    assert bulk.probability_panel == []  # an alert is NOT a probability
-    assert len(bulk.alerts) == 1
-    alert = bulk.alerts[0]
-    assert alert.model is ModelName.toxicophores
-    assert alert.hit is True and alert.count == 2 and alert.catalog == "BRENK"
-    assert alert.names == ["nitro group", "epoxide"]
-    assert alert.soft_flag is True  # over-flags; look-closer, NOT an auto-kill
+# -------------------------------------------------------------------------- emit only present keys
+def test_only_present_keys_emit_features_no_fabricated_zeros():
+    # a molecule with ONLY DILI reported -> only the dili feature, nothing else invented.
+    mol = aggregate({"m": [admet_ai(DILI=0.8)]}).molecules[0]
+    assert [f.feature for f in mol.features] == ["dili"]
+    assert not _has(mol, "ames_mutagenicity") and not _has(mol, LD50_FEATURE)
 
 
-def test_bulk_is_not_a_quality_equivalence_claim():
-    res = aggregate({"m1": [admet_ai_rec(DILI=0.5)]})
-    assert res.molecules[0].bulk.is_quality_equivalent is False
+def test_missing_or_nonnumeric_value_is_not_a_feature():
+    # DILI null and AMES a non-numeric string both drop out; only the numeric hERG survives.
+    mol = aggregate({"m": [admet_ai(DILI=None, AMES="n/a", hERG=0.4)]}).molecules[0]
+    assert [f.feature for f in mol.features] == ["herg_cardiotox"]
 
 
-# ---------------------------------------------------------------------------------------------------
-# LD50_Zhu magnitude read (F-5 landmine).
-# ---------------------------------------------------------------------------------------------------
+def test_molecule_with_no_toxicity_source_has_no_features():
+    unrelated = {"model": ModelName.bayesherg, "endpoint_values": {"P_block": 0.5},
+                 "uncertainty": None, "raw": {}, "provenance": PROV}
+    mol = aggregate({"m": [unrelated]}).molecules[0]
+    assert mol.features == []
 
 
-def test_ld50_zhu_is_a_magnitude_read_not_a_probability():
-    res = aggregate({"m1": [admet_ai_rec(LD50_Zhu=2.3, DILI=0.5)]})
-    bulk = res.molecules[0].bulk
-    # LD50_Zhu never enters the probability panel...
-    assert all(be.endpoint != "acute_oral_ld50_zhu" for be in bulk.probability_panel)
-    assert "hepatotoxicity_dili" in {be.endpoint for be in bulk.probability_panel}
-    # ...it is a magnitude read with the log(1/(mol/kg)) unit and up=more-toxic direction.
-    assert len(bulk.magnitude_reads) == 1
-    mr = bulk.magnitude_reads[0]
-    assert mr.endpoint == "acute_oral_ld50_zhu"
-    assert mr.value == 2.3
-    assert mr.unit == "log(1/(mol/kg))"
-    assert mr.direction == "up = more toxic"
-    assert mr.model is ModelName.admet_ai
-
-
-def test_ld50_zhu_marked_not_comparable_to_protox_ld50():
-    res = aggregate({"m1": [admet_ai_rec(LD50_Zhu=2.3)]})
-    assert res.molecules[0].bulk.magnitude_reads[0].comparable_to_protox_ld50 is False
-
-
-# ---------------------------------------------------------------------------------------------------
-# ProTox shortlist (separate block).
-# ---------------------------------------------------------------------------------------------------
-
-
-def test_protox_shortlist_flat_shape():
-    res = aggregate({"m1": [protox_rec(ld50=350.0, tox_class=3, accuracy=68.0)]})
-    sl = res.molecules[0].shortlist
-    assert isinstance(sl, ProToxShortlist)
-    assert sl.model is ModelName.protox
-    assert sl.tier == "shortlist"
-    assert sl.ld50_mg_kg == 350.0
-    assert sl.ld50_unit == "mg/kg" and sl.ld50_direction == "lower = more toxic"
-    assert sl.tox_class == 3
-    assert sl.prediction_accuracy == 68.0
-    calls = {e.name: (e.call, e.probability) for e in sl.endpoints}
-    assert calls["Hepatotoxicity"] == ("Active", 0.71)
-    assert calls["Carcinogenicity"] == ("Inactive", 0.62)
-
-
-def test_protox_shortlist_nested_sop_transcription_shape():
-    res = aggregate({"m1": [protox_rec(ld50=120.0, tox_class=2, accuracy=71.0, nested=True)]})
-    sl = res.molecules[0].shortlist
-    assert sl.ld50_mg_kg == 120.0 and sl.tox_class == 2 and sl.prediction_accuracy == 71.0
-    assert {e.name for e in sl.endpoints} == {"Hepatotoxicity", "Carcinogenicity"}
-
-
-def test_no_protox_record_yields_no_shortlist():
-    res = aggregate({"m1": [admet_ai_rec(DILI=0.5)]})
-    assert res.molecules[0].shortlist is None
-    # ...but the bulk block is still produced.
-    assert res.molecules[0].bulk.probability_panel[0].endpoint == "hepatotoxicity_dili"
-
-
-# ---------------------------------------------------------------------------------------------------
-# The core F-5 guarantee: the two LD50 reads NEVER merge.
-# ---------------------------------------------------------------------------------------------------
-
-
-def test_ld50_zhu_and_protox_ld50_stay_distinct_never_merged():
-    # A molecule with BOTH an ADMET-AI LD50_Zhu and a ProTox LD50 in the same bundle.
-    res = aggregate({"m1": [admet_ai_rec(LD50_Zhu=2.3, DILI=0.5), protox_rec(ld50=350.0, tox_class=3)]})
+# -------------------------------------------------------------------------- shape / plumbing
+def test_endpoint_identity_and_uniform_shape():
+    res = aggregate({"m": [admet_ai(DILI=0.5, LD50_Zhu=2.0), toxicophores(count=1)]})
+    assert res.endpoint == Endpoint.toxicity and res.n_molecules == 1
     mol = res.molecules[0]
-
-    # 1. The bulk LD50_Zhu magnitude read carries the log scale + up-direction, ONLY in bulk.
-    zhu = mol.bulk.magnitude_reads[0]
-    assert zhu.value == 2.3 and zhu.unit == "log(1/(mol/kg))" and zhu.direction == "up = more toxic"
-
-    # 2. The ProTox LD50 carries mg/kg + lower-direction, ONLY in the shortlist, under a DIFFERENT field.
-    assert mol.shortlist.ld50_mg_kg == 350.0
-    assert mol.shortlist.ld50_unit == "mg/kg" and mol.shortlist.ld50_direction == "lower = more toxic"
-
-    # 3. The two values live in structurally separate blocks: the shortlist has no LD50_Zhu, and the bulk
-    #    has no mg/kg read. There is no merged/averaged/converted scalar anywhere.
-    assert not math.isclose(zhu.value, mol.shortlist.ld50_mg_kg)  # distinct numbers, never averaged
-    sl_dump = mol.shortlist.model_dump()
-    assert "LD50_Zhu" not in sl_dump and "acute_oral_ld50_zhu" not in str(sl_dump)
-    bulk_dump = mol.bulk.model_dump()
-    assert 350.0 not in _all_numbers(bulk_dump)  # the mg/kg value never leaks into the bulk block
-    assert 2.3 not in _all_numbers(mol.shortlist.model_dump())  # the log value never leaks into shortlist
-
-    # 4. LD50_Zhu is not, and cannot become, a probability-panel endpoint.
-    assert all("ld50" not in be.endpoint for be in mol.bulk.probability_panel)
+    assert mol.endpoint == Endpoint.toxicity and mol.mol_id == "m"
+    assert {f.feature for f in mol.features} == {"dili", LD50_FEATURE, TOX_ALERTS_FEATURE}
+    assert set(type(mol).model_fields) == {"endpoint", "mol_id", "features"}
+    assert set(type(mol.features[0]).model_fields) == {"feature", "score", "uncertainty", "unit", "n_sources", "sources"}
 
 
-def _all_numbers(obj) -> set:
-    """Collect every numeric leaf in a nested dict/list (helper for the no-leak assertions above)."""
-    out: set = set()
-    if isinstance(obj, dict):
-        for v in obj.values():
-            out |= _all_numbers(v)
-    elif isinstance(obj, (list, tuple)):
-        for v in obj:
-            out |= _all_numbers(v)
-    elif isinstance(obj, bool):
-        pass
-    elif isinstance(obj, (int, float)):
-        out.add(float(obj))
-    return out
+def test_multiple_molecules_independent():
+    res = aggregate({"a": [admet_ai(DILI=0.2)], "b": [admet_ai(DILI=0.8)]})
+    by = {m.mol_id: _feat(m, "dili").score for m in res.molecules}
+    assert by == {"a": 0.2, "b": 0.8}
 
 
-# ---------------------------------------------------------------------------------------------------
-# Full FTO-43-shaped bundle + input-shape normalization.
-# ---------------------------------------------------------------------------------------------------
-
-
-def test_full_bundle_produces_both_blocks_separately():
-    bundle = [
-        admet_ai_rec(LD50_Zhu=2.1, DILI=0.7, hERG=0.5, AMES=0.4,
-                     Carcinogens_Lagunin=0.3, ClinTox=0.8, Skin_Reaction=0.2),
-        toxicophores_rec(hit=True, count=1, names=["michael acceptor"]),
-        protox_rec(ld50=300.0, tox_class=3, accuracy=70.0),
-    ]
-    res = aggregate({"FTO-43": bundle})
-    mol = res.molecules[0]
-    assert mol.mol_id == "FTO-43"
-    # bulk block: 6 ADMET-AI classifier endpoints, 1 magnitude read (LD50_Zhu), 1 alert.
-    assert len(mol.bulk.probability_panel) == 6
-    assert len(mol.bulk.magnitude_reads) == 1
-    assert len(mol.bulk.alerts) == 1
-    # shortlist block: present and separate.
-    assert mol.shortlist is not None and mol.shortlist.ld50_mg_kg == 300.0
-
-
-def test_input_shapes_normalize_identically():
-    rec = admet_ai_rec(DILI=0.5)
-    as_map = aggregate({"m1": [rec]})
-    as_pairs = aggregate([("m1", [rec])])
-    as_dicts = aggregate([{"mol_id": "m1", "records": [rec]}])
-    as_bare = aggregate([[rec]])
-    for res in (as_map, as_pairs, as_dicts):
-        assert res.molecules[0].mol_id == "m1"
-    assert as_bare.molecules[0].mol_id == "mol_0"
-    for res in (as_map, as_pairs, as_dicts, as_bare):
-        assert res.molecules[0].bulk.probability_panel[0].p_toxic == 0.5
+def test_input_shapes_normalize_the_same():
+    recs = [admet_ai(DILI=0.5)]
+    as_map = aggregate({"FTO-43": recs}).molecules[0]
+    as_pairs = aggregate([("FTO-43", recs)]).molecules[0]
+    as_dicts = aggregate([{"mol_id": "FTO-43", "records": recs}]).molecules[0]
+    for m in (as_map, as_pairs, as_dicts):
+        assert m.mol_id == "FTO-43"
+        assert _feat(m, "dili").score == 0.5
 
 
 def test_empty_input_is_clean():
     res = aggregate({})
     assert res.n_molecules == 0 and res.molecules == []
-    assert res.endpoint is Endpoint.toxicity
+    assert res.endpoint == Endpoint.toxicity

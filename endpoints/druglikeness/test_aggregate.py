@@ -1,23 +1,17 @@
-"""Tests for the druglikeness aggregator (task t50): three CONTEXT flags surfaced as-is, NEVER a gate.
+"""Tests for the druglikeness aggregator: three separate single-source context features (NEVER a gate).
 
-Synthetic ``OutputRecord``-shaped inputs only (laptop, core env - no box, no GPU). They exercise what this
-context-only endpoint exists to guarantee (task t50, IO_SPEC §30 / §2 "druglikeness"):
-
-- the three flags (Lipinski_violations, Veber_pass, QED) pass through UNCHANGED from the model record;
-- there is NO gate/kill logic: no threshold, no consensus, no pass/fail verdict; is_gate is always False;
-- missing flags surface as absent (None), never coerced to a default that could read as a verdict;
-- the accepted input shapes normalize the same way; multiple molecules stay independent.
+Synthetic ``OutputRecord``-shaped inputs (laptop, core env - no box, no GPU). They pin:
+- lipinski_violations is a single numeric source (score = the count, uncertainty None);
+- veber_pass carries the native boolean but has NO fused score (a boolean has no mean);
+- qed is a single numeric source (score = the value);
+- missing flags yield empty features (no crash, no fabricated zeros); the accepted input shapes normalize
+  the same; multiple molecules stay independent.
 """
 
 from __future__ import annotations
 
 from core.models import Endpoint, ModelName
-from endpoints.druglikeness.aggregate import (
-    LIPINSKI_KEY,
-    QED_KEY,
-    VEBER_KEY,
-    aggregate,
-)
+from endpoints.druglikeness.aggregate import LIPINSKI, QED, VEBER, aggregate
 
 PROV = {"model": "test"}
 
@@ -26,132 +20,98 @@ def lvq_rec(lipinski=None, veber=None, qed=None) -> dict:
     """A lipinski_veber_qed-shaped record: the three context flags in endpoint_values."""
     ev: dict = {}
     if lipinski is not None:
-        ev[LIPINSKI_KEY] = lipinski
+        ev["Lipinski_violations"] = lipinski
     if veber is not None:
-        ev[VEBER_KEY] = veber
+        ev["Veber_pass"] = veber
     if qed is not None:
-        ev[QED_KEY] = qed
-    return {
-        "model": ModelName.lipinski_veber_qed,
-        "endpoint_values": ev,
-        "uncertainty": None,
-        "raw": {},
-        "provenance": PROV,
-    }
+        ev["QED"] = qed
+    return {"model": ModelName.lipinski_veber_qed, "endpoint_values": ev,
+            "uncertainty": None, "raw": {}, "provenance": PROV}
 
 
-# --------------------------------------------------------------------------------------------------
-# Pass-through: the three flags come out exactly as they went in.
-# --------------------------------------------------------------------------------------------------
-def test_three_flags_pass_through_unchanged():
-    recs = [lvq_rec(lipinski=1, veber=True, qed=0.734)]
-    mol = aggregate({"m": recs}).molecules[0]
-    assert mol.present is True
-    assert mol.Lipinski_violations == 1
-    assert mol.Veber_pass is True
-    assert mol.QED == 0.734
+def _feat(mol, name):
+    return next(f for f in mol.features if f.feature == name)
 
 
-def test_flags_pass_through_with_zero_and_false_not_dropped():
-    """0 violations and Veber False are meaningful values, not 'absent' - they must survive unchanged."""
-    recs = [lvq_rec(lipinski=0, veber=False, qed=0.0)]
-    mol = aggregate({"m": recs}).molecules[0]
-    assert mol.present is True
-    assert mol.Lipinski_violations == 0
-    assert mol.Veber_pass is False
-    assert mol.QED == 0.0
+def _src(feature, model):
+    return next(s for s in feature.sources if s.model == model)
 
 
-def test_four_violations_still_only_context_no_verdict():
-    """Even the worst Lipinski score (4/4 violations) yields NO pass/fail field - it is context only."""
-    recs = [lvq_rec(lipinski=4, veber=False, qed=0.05)]
-    mol = aggregate({"m": recs}).molecules[0]
-    assert mol.Lipinski_violations == 4
-    assert mol.is_gate is False
-    # The molecule object exposes no verdict/kill/promote field: only the three flags + context markers.
-    fields = set(mol.model_dump().keys())
-    assert fields == {"mol_id", "present", "Lipinski_violations", "Veber_pass", "QED", "is_gate", "notes"}
-    assert not (fields & {"pass", "fail", "gate", "verdict", "kill", "promote", "reject", "consensus"})
+# -------------------------------------------------------------------------- lipinski: single numeric source
+def test_lipinski_violations_single_numeric_source():
+    f = _feat(aggregate({"m": [lvq_rec(lipinski=1)]}).molecules[0], LIPINSKI)
+    assert f.score == 1.0 and f.uncertainty is None      # single source -> value, no spread
+    assert f.n_sources == 1
+    assert _src(f, "lipinski_veber_qed").value == 1
 
 
-# --------------------------------------------------------------------------------------------------
-# Missing flags: surfaced as absent, never coerced to a default.
-# --------------------------------------------------------------------------------------------------
-def test_missing_flags_are_none_not_defaulted():
-    recs = [lvq_rec(qed=0.5)]  # only QED present
-    mol = aggregate({"m": recs}).molecules[0]
-    assert mol.present is True
-    assert mol.QED == 0.5
-    assert mol.Lipinski_violations is None
-    assert mol.Veber_pass is None
+def test_zero_violations_is_a_value_not_absent():
+    f = _feat(aggregate({"m": [lvq_rec(lipinski=0)]}).molecules[0], LIPINSKI)
+    assert f.score == 0.0 and f.n_sources == 1           # 0 is meaningful, not dropped
 
 
-def test_empty_bundle_is_absent_not_a_verdict():
-    mol = aggregate({"m": []}).molecules[0]
-    assert mol.present is False
-    assert (mol.Lipinski_violations, mol.Veber_pass, mol.QED) == (None, None, None)
-    assert mol.is_gate is False
+# -------------------------------------------------------------------------- veber: boolean, score deferred
+def test_veber_pass_carries_boolean_with_deferred_score():
+    f = _feat(aggregate({"m": [lvq_rec(veber=True)]}).molecules[0], VEBER)
+    assert f.score is None and f.uncertainty is None     # a boolean has no mean
+    assert f.n_sources == 1
+    assert _src(f, "lipinski_veber_qed").value is True    # native boolean carried
 
 
-def test_explicit_none_valued_fields_treated_as_absent():
-    """A record that carries the keys but with None values (the model's failed-parse shape) reads as absent."""
-    rec = {
-        "model": ModelName.lipinski_veber_qed,
-        "endpoint_values": {LIPINSKI_KEY: None, VEBER_KEY: None, QED_KEY: None},
-        "uncertainty": None,
-        "raw": {},
-        "provenance": PROV,
-    }
+def test_veber_false_is_carried_not_dropped():
+    f = _feat(aggregate({"m": [lvq_rec(veber=False)]}).molecules[0], VEBER)
+    assert f.n_sources == 1
+    assert _src(f, "lipinski_veber_qed").value is False
+
+
+# -------------------------------------------------------------------------- qed: single numeric source
+def test_qed_single_numeric_source():
+    f = _feat(aggregate({"m": [lvq_rec(qed=0.734)]}).molecules[0], QED)
+    assert f.score == 0.734 and f.uncertainty is None
+    assert f.n_sources == 1
+    assert _src(f, "lipinski_veber_qed").value == 0.734
+
+
+# -------------------------------------------------------------------------- three features, uniform shape
+def test_three_features_and_uniform_shape():
+    res = aggregate({"m": [lvq_rec(lipinski=1, veber=True, qed=0.734)]})
+    assert res.endpoint == Endpoint.druglikeness and res.n_molecules == 1
+    mol = res.molecules[0]
+    assert {f.feature for f in mol.features} == {LIPINSKI, VEBER, QED}
+    assert set(type(mol).model_fields) == {"endpoint", "mol_id", "features"}
+    assert set(type(mol.features[0]).model_fields) == {"feature", "score", "uncertainty", "unit", "n_sources", "sources"}
+
+
+def test_missing_signals_yield_empty_features_no_crash():
+    # only an unrelated record: all three features present but empty (no crash, no fabricated values)
+    rec = {"model": ModelName.bayesherg, "endpoint_values": {"P_block": 0.5},
+           "uncertainty": None, "raw": {}, "provenance": PROV}
     mol = aggregate({"m": [rec]}).molecules[0]
-    assert mol.present is False
-    assert (mol.Lipinski_violations, mol.Veber_pass, mol.QED) == (None, None, None)
+    for f in mol.features:
+        assert f.n_sources == 0 and f.score is None
 
 
-# --------------------------------------------------------------------------------------------------
-# No gate: the result carries no aggregation/threshold/verdict anywhere.
-# --------------------------------------------------------------------------------------------------
-def test_result_is_context_never_a_gate():
-    result = aggregate({"m": [lvq_rec(lipinski=2, veber=True, qed=0.6)]})
-    assert result.endpoint == Endpoint.druglikeness
-    # The result object exposes no consensus/gate/verdict field: molecules + count + a context note only.
-    result_fields = set(result.model_dump().keys())
-    assert result_fields == {"endpoint", "quantity", "molecules", "n_molecules", "notes"}
-    assert not (result_fields & {"consensus", "gate", "verdict", "pass", "fail", "kill"})
-    mol = result.molecules[0]
-    assert mol.is_gate is False
-    assert any("context" in n.lower() and "not a gate" in n.lower() for n in mol.notes)
+def test_none_valued_flags_are_dropped_not_fabricated():
+    rec = {"model": ModelName.lipinski_veber_qed,
+           "endpoint_values": {"Lipinski_violations": None, "Veber_pass": None, "QED": None},
+           "uncertainty": None, "raw": {}, "provenance": PROV}
+    mol = aggregate({"m": [rec]}).molecules[0]
+    for f in mol.features:
+        assert f.n_sources == 0 and f.score is None
 
 
-# --------------------------------------------------------------------------------------------------
-# Input-shape normalization and multiple molecules.
-# --------------------------------------------------------------------------------------------------
-def test_accepted_input_shapes_normalize_the_same():
-    rec = lvq_rec(lipinski=1, veber=True, qed=0.5)
-    as_map = aggregate({"molA": [rec]}).molecules[0]
-    as_pairs = aggregate([("molA", [rec])]).molecules[0]
-    as_dicts = aggregate([{"mol_id": "molA", "records": [rec]}]).molecules[0]
-    as_bare = aggregate([[rec]]).molecules[0]
+# -------------------------------------------------------------------------- normalization / independence
+def test_input_shapes_normalize_the_same():
+    recs = [lvq_rec(qed=0.5)]
+    as_map = aggregate({"FTO-43": recs}).molecules[0]
+    as_pairs = aggregate([("FTO-43", recs)]).molecules[0]
+    as_dicts = aggregate([{"mol_id": "FTO-43", "records": recs}]).molecules[0]
     for m in (as_map, as_pairs, as_dicts):
-        assert m.mol_id == "molA"
-    assert as_bare.mol_id == "mol_0"
-    for m in (as_map, as_pairs, as_dicts, as_bare):
-        assert m.Lipinski_violations == 1 and m.Veber_pass is True and m.QED == 0.5
+        assert m.mol_id == "FTO-43"
+        assert _feat(m, QED).score == 0.5
 
 
-def test_multiple_molecules_are_independent():
-    good = lvq_rec(lipinski=0, veber=True, qed=0.9)
-    poor = lvq_rec(lipinski=3, veber=False, qed=0.1)
-    result = aggregate({"good": [good], "poor": [poor]})
-    assert result.n_molecules == 2
-    by_id = {m.mol_id: m for m in result.molecules}
-    assert (by_id["good"].Lipinski_violations, by_id["good"].QED) == (0, 0.9)
-    assert (by_id["poor"].Lipinski_violations, by_id["poor"].QED) == (3, 0.1)
-
-
-def test_first_non_none_value_wins_flags_never_combined():
-    """If two records carry a flag, the first non-None value is surfaced as-is; flags are never averaged."""
-    rec_a = lvq_rec(qed=0.4)                       # QED only
-    rec_b = lvq_rec(lipinski=2, veber=True, qed=0.8)  # a second record also carrying QED
-    mol = aggregate({"m": [rec_a, rec_b]}).molecules[0]
-    assert mol.QED == 0.4                          # first non-None wins; NOT the mean of 0.4 and 0.8
-    assert mol.Lipinski_violations == 2 and mol.Veber_pass is True
+def test_multiple_molecules_independent():
+    res = aggregate({"a": [lvq_rec(qed=0.1)], "b": [lvq_rec(qed=0.9)]})
+    by = {m.mol_id: _feat(m, QED).score for m in res.molecules}
+    assert by == {"a": 0.1, "b": 0.9}

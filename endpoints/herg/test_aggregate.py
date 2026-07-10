@@ -1,213 +1,174 @@
-"""Tests for the hERG gate aggregator (task t52): harmonization shape + PROVISIONAL flag + DEFERRED marker.
+"""Tests for the herg aggregator: hERG_block (3-prob ensemble) + NaV1.5 / CaV1.2 context features.
 
-Synthetic ``OutputRecord``-shaped inputs only (laptop, core env - no box, no GPU). They pin down what
-this endpoint must guarantee (task t52, IO_SPEC §2 "hERG (GATE)" / §3 F-1, CLAUDE.md §4/§4a):
-
-- HARMONIZATION SHAPE: each contributing read maps onto the common P(block) shape - BayeshERG /
-  CardioTox net / ADMET-AI as identity probabilities (BayeshERG carrying alea/epis); CardioGenAI's
-  "hERG pIC50" (literal space) through the PLACEHOLDER F-1 logistic.
-- DEFERRED: the flag is PROVISIONAL/UNCALIBRATED - every threshold is a PLACEHOLDER_* constant, the
-  result is marked ``deferred``, and the module carries an explicit DEFERRED marker.
+Synthetic ``OutputRecord``-shaped inputs (laptop, core env - no box, no GPU). They pin the science that
+must survive the shape change:
+- three identity P(block) probabilities (admet_ai / bayesherg / cardiotox_net) harmonize onto hERG_block;
+  score = equally-weighted mean, uncertainty = std over the same values;
+- CardioGenAI's "hERG pIC50" (literal space) is CARRIED as a source with value=None (raw pIC50 visible)
+  and NEVER enters the mean - the pIC50 -> P(block) mapping is DEFERRED (F-1);
+- NaV1.5 and CaV1.2 pIC50s are DIFFERENT entities -> their own single-source features, never fused;
+- any subset (single source -> uncertainty None; none -> score None) is tolerated.
 """
 
 from __future__ import annotations
 
-from pathlib import Path
+import math
 
 from core.models import Endpoint, ModelName
 from endpoints.herg.aggregate import (
-    ADMET_AI_HERG_KEY,
-    BAYESHERG_PBLOCK_KEY,
-    CARDIOGENAI_PIC50_KEY,
-    CARDIOTOX_PBLOCK_KEY,
-    PLACEHOLDER_HIGH_MEAN,
-    PLACEHOLDER_MEDIUM_MEAN,
-    PLACEHOLDER_PIC50_CENTER,
-    PLACEHOLDER_SPECIALIST_ALARM,
-    HergFlag,
-    ReadKind,
-    _placeholder_pic50_to_pblock,
+    CAV_BLOCK,
+    HERG_BLOCK,
+    NAV_BLOCK,
     aggregate,
 )
 
 PROV = {"model": "test"}
 
 
-# --------------------------------------------------------------------------------------------------
-# Synthetic record builders (one per contributing model), keyed exactly as each adapter writes.
-# --------------------------------------------------------------------------------------------------
-def bayesherg_rec(p_block, alea=None, epis=None) -> dict:
-    return {
-        "model": ModelName.bayesherg,
-        "endpoint_values": {BAYESHERG_PBLOCK_KEY: p_block},
-        "uncertainty": {"aleatoric": alea, "epistemic": epis},
-        "raw": {},
-        "provenance": PROV,
-    }
+def admet_ai(p_block: float) -> dict:
+    return {"model": ModelName.admet_ai, "endpoint_values": {"hERG": p_block},
+            "uncertainty": None, "raw": {}, "provenance": PROV}
 
 
-def cardiotox_rec(p_block) -> dict:
-    return {
-        "model": ModelName.cardiotox_net,
-        "endpoint_values": {CARDIOTOX_PBLOCK_KEY: p_block},
-        "uncertainty": None,
-        "raw": {},
-        "provenance": PROV,
-    }
+def bayesherg(p_block: float, alea: float | None = None, epis: float | None = None) -> dict:
+    return {"model": ModelName.bayesherg, "endpoint_values": {"P_block": p_block},
+            "uncertainty": {"aleatoric": alea, "epistemic": epis}, "raw": {}, "provenance": PROV}
 
 
-def admet_ai_rec(p_block) -> dict:
-    return {
-        "model": ModelName.admet_ai,
-        "endpoint_values": {ADMET_AI_HERG_KEY: p_block},
-        "uncertainty": None,
-        "raw": {},
-        "provenance": PROV,
-    }
+def cardiotox(p_block: float) -> dict:
+    return {"model": ModelName.cardiotox_net, "endpoint_values": {"P_block": p_block},
+            "uncertainty": None, "raw": {}, "provenance": PROV}
 
 
-def cardiogenai_rec(pic50) -> dict:
-    return {
-        "model": ModelName.cardiogenai,
-        "endpoint_values": {CARDIOGENAI_PIC50_KEY: pic50},
-        "uncertainty": None,
-        "raw": {},
-        "provenance": PROV,
-    }
+def cardiogenai(*, herg: float | None = None, nav: float | None = None, cav: float | None = None) -> dict:
+    ev: dict = {}
+    if herg is not None:
+        ev["hERG pIC50"] = herg
+    if nav is not None:
+        ev["NaV1.5 pIC50"] = nav
+    if cav is not None:
+        ev["CaV1.2 pIC50"] = cav
+    return {"model": ModelName.cardiogenai, "endpoint_values": ev,
+            "uncertainty": None, "raw": {}, "provenance": PROV}
 
 
-def _read_for(mol, model) -> object:
-    matches = [r for r in mol.reads if r.model == model]
-    assert len(matches) == 1, f"expected exactly one read for {model}, got {len(matches)}"
-    return matches[0]
+def _feat(mol, name):
+    return next(f for f in mol.features if f.feature == name)
 
 
-# --------------------------------------------------------------------------------------------------
-# Harmonization shape: each read lands on the common shape correctly.
-# --------------------------------------------------------------------------------------------------
-def test_bayesherg_identity_pblock_and_carries_alea_epis():
-    mol = aggregate({"m": [bayesherg_rec(0.42, alea=0.11, epis=0.07)]}).molecules[0]
-    r = _read_for(mol, ModelName.bayesherg)
-    assert r.kind is ReadKind.probability
-    assert r.p_block == 0.42
-    assert r.source_field == BAYESHERG_PBLOCK_KEY
-    assert r.is_specialist is True
-    assert r.aleatoric == 0.11 and r.epistemic == 0.07
+def _src(feature, model):
+    return next(s for s in feature.sources if s.model == model)
 
 
-def test_cardiotox_and_admet_ai_identity_pblock():
-    mol = aggregate({"m": [cardiotox_rec(0.6), admet_ai_rec(0.3)]}).molecules[0]
-    ct = _read_for(mol, ModelName.cardiotox_net)
-    ai = _read_for(mol, ModelName.admet_ai)
-    assert ct.kind is ReadKind.probability and ct.p_block == 0.6
-    assert ai.kind is ReadKind.probability and ai.p_block == 0.3
-    # ADMET-AI is a generalist pre-screen, not a specialist that can raise a solo alarm.
-    assert ai.is_specialist is False
+# -------------------------------------------------------------------------- the three probability sources
+def test_three_probabilities_are_identity_sources():
+    f = _feat(aggregate({"m": [admet_ai(0.3), bayesherg(0.42), cardiotox(0.6)]}).molecules[0], HERG_BLOCK)
+    assert _src(f, "admet_ai").value == 0.3
+    assert _src(f, "bayesherg").value == 0.42
+    assert _src(f, "cardiotox_net").value == 0.6
 
 
-def test_cardiogenai_pic50_through_placeholder_logistic():
-    """CardioGenAI's "hERG pIC50" (literal space) maps through the PLACEHOLDER F-1 logistic, not identity."""
-    mol = aggregate({"m": [cardiogenai_rec(PLACEHOLDER_PIC50_CENTER)]}).molecules[0]
-    r = _read_for(mol, ModelName.cardiogenai)
-    assert r.kind is ReadKind.probability
-    assert r.source_field == CARDIOGENAI_PIC50_KEY
-    # anchor: pIC50 = 5.0 non-blocker cutoff -> exactly 0.5
-    assert abs(r.p_block - 0.5) < 1e-9
+def test_bayesherg_note_carries_alea_epis():
+    f = _feat(aggregate({"m": [bayesherg(0.42, alea=0.11, epis=0.07)]}).molecules[0], HERG_BLOCK)
+    note = _src(f, "bayesherg").note
+    assert "alea=0.11" in note and "epis=0.07" in note
 
 
-def test_placeholder_pic50_mapping_direction_and_anchor():
-    assert abs(_placeholder_pic50_to_pblock(5.0) - 0.5) < 1e-9
-    # higher pIC50 = stronger block = higher P(block); lower = lower.
-    assert _placeholder_pic50_to_pblock(8.0) > 0.5
-    assert _placeholder_pic50_to_pblock(2.0) < 0.5
+def test_score_is_mean_and_uncertainty_is_std_over_probabilities():
+    f = _feat(aggregate({"m": [admet_ai(0.4), bayesherg(0.2), cardiotox(0.6)]}).molecules[0], HERG_BLOCK)
+    vals = [0.4, 0.2, 0.6]
+    mean = sum(vals) / 3
+    var = sum((x - mean) ** 2 for x in vals) / 3
+    assert f.n_sources == 3
+    assert abs(f.score - mean) < 1e-9
+    assert abs(f.uncertainty - math.sqrt(var)) < 1e-9
 
 
-def test_ensemble_mean_and_spread_over_probability_reads():
-    recs = [bayesherg_rec(0.2), cardiotox_rec(0.6), admet_ai_rec(0.4)]
-    mol = aggregate({"m": recs}).molecules[0]
-    assert mol.n_probability_reads == 3
-    assert abs(mol.ensemble_mean - 0.4) < 1e-9
-    assert abs(mol.ensemble_spread - 0.4) < 1e-9  # 0.6 - 0.2
+def test_convergent_sources_have_low_uncertainty_divergent_high():
+    tight = _feat(aggregate({"m": [admet_ai(0.5), bayesherg(0.5), cardiotox(0.5)]}).molecules[0], HERG_BLOCK)
+    wide = _feat(aggregate({"m": [admet_ai(0.1), bayesherg(0.5), cardiotox(0.9)]}).molecules[0], HERG_BLOCK)
+    assert tight.uncertainty < wide.uncertainty
 
 
-# --------------------------------------------------------------------------------------------------
-# Provisional flag: sensitivity-leaning, all thresholds are placeholders.
-# --------------------------------------------------------------------------------------------------
-def test_flag_high_on_mean_at_threshold():
-    mol = aggregate({"m": [bayesherg_rec(0.5), cardiotox_rec(0.5)]}).molecules[0]
-    assert mol.ensemble_mean >= PLACEHOLDER_HIGH_MEAN
-    assert mol.provisional_flag is HergFlag.HIGH
+# -------------------------------------------------------------------------- cardiogenai carried, not scored
+def test_cardiogenai_pic50_is_carried_but_excluded_from_score():
+    recs = [admet_ai(0.4), bayesherg(0.2), cardiotox(0.6), cardiogenai(herg=7.0)]
+    f = _feat(aggregate({"m": recs}).molecules[0], HERG_BLOCK)
+    cg = _src(f, "cardiogenai")
+    assert cg.value is None                     # NOT scored: pIC50 -> P(block) is DEFERRED (F-1)
+    assert cg.raw == 7.0 and cg.raw_unit == "pIC50"
+    assert f.n_sources == 4                      # carried as a source
+    # score is still the mean of the THREE real probabilities, cardiogenai excluded
+    assert abs(f.score - (0.4 + 0.2 + 0.6) / 3) < 1e-9
 
 
-def test_flag_high_on_single_specialist_alarm_even_if_mean_low():
-    """A single specialist >= 0.7 trips HIGH even when the mean is low (sensitivity-leaning)."""
-    recs = [bayesherg_rec(0.9), admet_ai_rec(0.05)]  # mean = 0.475 < 0.5 but specialist alarm fires
-    mol = aggregate({"m": recs}).molecules[0]
-    assert mol.ensemble_mean < PLACEHOLDER_HIGH_MEAN
-    assert any(r.is_specialist and r.p_block >= PLACEHOLDER_SPECIALIST_ALARM for r in mol.reads)
-    assert mol.provisional_flag is HergFlag.HIGH
+def test_deferred_marker_present_in_cardiogenai_note():
+    f = _feat(aggregate({"m": [cardiogenai(herg=6.0)]}).molecules[0], HERG_BLOCK)
+    assert "DEFERRED" in _src(f, "cardiogenai").note
+    assert f.score is None and f.n_sources == 1  # only a carried value -> no numeric score
 
 
-def test_flag_medium_on_mid_mean():
-    mol = aggregate({"m": [bayesherg_rec(0.35), cardiotox_rec(0.35)]}).molecules[0]
-    assert PLACEHOLDER_MEDIUM_MEAN <= mol.ensemble_mean < PLACEHOLDER_HIGH_MEAN
-    assert mol.provisional_flag is HergFlag.MEDIUM
+# -------------------------------------------------------------------------- nav1.5 / cav1.2 separate entities
+def test_nav_and_cav_are_separate_single_source_features():
+    mol = aggregate({"m": [cardiogenai(nav=5.5, cav=4.2)]}).molecules[0]
+    nav = _feat(mol, NAV_BLOCK)
+    cav = _feat(mol, CAV_BLOCK)
+    assert nav.score == 5.5 and nav.n_sources == 1 and nav.uncertainty is None
+    assert cav.score == 4.2 and cav.n_sources == 1 and cav.uncertainty is None
 
 
-def test_flag_low_on_low_mean_no_alarm():
-    mol = aggregate({"m": [bayesherg_rec(0.1), cardiotox_rec(0.15)]}).molecules[0]
-    assert mol.ensemble_mean < PLACEHOLDER_MEDIUM_MEAN
-    assert mol.provisional_flag is HergFlag.LOW
+def test_channels_never_fold_into_herg_block():
+    mol = aggregate({"m": [admet_ai(0.4), cardiogenai(herg=7.0, nav=5.5, cav=4.2)]}).molecules[0]
+    herg = _feat(mol, HERG_BLOCK)
+    # the NaV/CaV pIC50s are their own features, never sources of hERG_block
+    assert [s.model for s in herg.sources] == ["admet_ai", "cardiogenai"]
+    assert herg.score == 0.4  # only admet_ai's probability
 
 
-def test_spread_biases_low_up_to_medium_toward_caution():
-    """Wide disagreement (spread) biases one level UP even when the mean would read LOW."""
-    # mean = 0.25 (LOW band) but spread 0.5 - 0.0 = 0.5 >= 0.4 caution threshold -> bump to MEDIUM.
-    recs = [bayesherg_rec(0.0), cardiotox_rec(0.5)]
-    mol = aggregate({"m": recs}).molecules[0]
-    assert mol.ensemble_mean < PLACEHOLDER_MEDIUM_MEAN
-    assert mol.ensemble_spread >= 0.4
-    assert mol.provisional_flag is HergFlag.MEDIUM
+# -------------------------------------------------------------------------- subsets / graceful fallbacks
+def test_single_probability_source_has_score_but_no_uncertainty():
+    f = _feat(aggregate({"m": [admet_ai(0.4)]}).molecules[0], HERG_BLOCK)
+    assert f.score == 0.4 and f.uncertainty is None and f.n_sources == 1
 
 
-def test_empty_bundle_is_unknown_not_a_fabricated_verdict():
-    mol = aggregate({"m": []}).molecules[0]
-    assert mol.provisional_flag is HergFlag.UNKNOWN
-    assert mol.ensemble_mean is None
+def test_no_herg_source_yields_null_score_no_crash():
+    rec = {"model": ModelName.opera, "endpoint_values": {"LogD": 1.0},
+           "uncertainty": None, "raw": {}, "provenance": PROV}
+    mol = aggregate({"m": [rec]}).molecules[0]
+    for f in mol.features:
+        assert f.n_sources == 0 and f.score is None
 
 
-# --------------------------------------------------------------------------------------------------
-# DEFERRED contract: the endpoint RUNS but the calibrated gate is explicitly deferred.
-# --------------------------------------------------------------------------------------------------
-def test_result_is_marked_deferred_and_is_a_gate_but_uncalibrated():
-    res = aggregate({"m": [bayesherg_rec(0.5)]})
-    assert res.endpoint is Endpoint.herg
-    assert res.deferred is True
+def test_missing_or_nonnumeric_value_is_not_a_source():
+    recs = [admet_ai(0.4), {"model": ModelName.bayesherg, "endpoint_values": {"P_block": None},
+                            "uncertainty": None, "raw": {}, "provenance": PROV}]
+    f = _feat(aggregate({"m": recs}).molecules[0], HERG_BLOCK)
+    assert [s.model for s in f.sources] == ["admet_ai"]
+
+
+# -------------------------------------------------------------------------- shape / plumbing
+def test_endpoint_identity_and_uniform_shape():
+    res = aggregate({"m": [admet_ai(0.4)]})
+    assert res.endpoint == Endpoint.herg and res.n_molecules == 1
     mol = res.molecules[0]
-    assert mol.is_gate is True        # hERG IS the primary gate,
-    assert mol.calibrated is False    # but this specific call is not the calibrated one.
+    assert mol.endpoint == Endpoint.herg and mol.mol_id == "m"
+    assert {f.feature for f in mol.features} == {HERG_BLOCK, NAV_BLOCK, CAV_BLOCK}
+    assert set(type(mol).model_fields) == {"endpoint", "mol_id", "features"}
+    assert set(type(mol.features[0]).model_fields) == {
+        "feature", "score", "uncertainty", "unit", "n_sources", "sources"}
 
 
-def test_flag_reasons_label_the_call_provisional():
-    mol = aggregate({"m": [bayesherg_rec(0.9)]}).molecules[0]
-    assert any("PROVISIONAL" in r or "UNCALIBRATED" in r for r in mol.flag_reasons)
+def test_multiple_molecules_independent():
+    res = aggregate({"safe": [admet_ai(0.05)], "risky": [admet_ai(0.95)]})
+    by = {m.mol_id: _feat(m, HERG_BLOCK).score for m in res.molecules}
+    assert by == {"safe": 0.05, "risky": 0.95}
 
 
-def test_module_carries_explicit_deferred_marker():
-    """The gate verifier requires an explicit DEFERRED marker in aggregate.py."""
-    src = (Path(__file__).parent / "aggregate.py").read_text()
-    assert "DEFERRED" in src
-    assert "PLACEHOLDER_" in src
-
-
-def test_multiple_molecules_stay_independent():
-    res = aggregate(
-        {
-            "safe": [bayesherg_rec(0.05), cardiotox_rec(0.1)],
-            "risky": [bayesherg_rec(0.95), cardiotox_rec(0.9)],
-        }
-    )
-    assert res.n_molecules == 2
-    by_id = {m.mol_id: m for m in res.molecules}
-    assert by_id["safe"].provisional_flag is HergFlag.LOW
-    assert by_id["risky"].provisional_flag is HergFlag.HIGH
+def test_input_shapes_normalize_the_same():
+    recs = [admet_ai(0.4)]
+    as_map = aggregate({"FTO-43": recs}).molecules[0]
+    as_pairs = aggregate([("FTO-43", recs)]).molecules[0]
+    as_dicts = aggregate([{"mol_id": "FTO-43", "records": recs}]).molecules[0]
+    for m in (as_map, as_pairs, as_dicts):
+        assert m.mol_id == "FTO-43"
+        assert _feat(m, HERG_BLOCK).score == 0.4
