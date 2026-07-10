@@ -1,260 +1,136 @@
-"""Tests for the lipophilicity logD-consensus aggregator (task t40).
+"""Tests for the lipophilicity aggregator: one ``logD`` feature, score = mean, uncertainty = std.
 
-Synthetic ``OutputRecord``-shaped inputs only (laptop, core env - no box, no GPU). They exercise:
-- a tight cluster -> low spread flag + a consensus near the measured anchor + trust;
-- a scattered set -> high spread flag;
-- that logP lenses (RDKit Crippen WLOGP, SwissADME consensus) are CONVERTED to logD before entering the
-  consensus, and are excluded (never averaged raw) when no shared pKa is available (F-12);
-- the shared pKa placeholder is read from OPERA ``pKa_b`` (F-13) and can be injected;
-- the Henderson-Hasselbalch conversion math (the F-16 placeholder);
-- a consensus far from measured logD ~= 1 lowers trust even when the spread is low (task t40).
+Synthetic ``OutputRecord``-shaped inputs (laptop, core env - no box, no GPU). They pin the science that
+must survive the shape change:
+- native logD lenses (OPERA, ADMET-AI) pass through unchanged;
+- logP lenses (RDKit Crippen, SwissADME) convert to logD via Henderson-Hasselbalch with the shared pKa
+  (F-12) BEFORE joining the score; native logP kept in ``raw``;
+- a logP lens with no shared pKa is carried with ``value=None`` (excluded, never averaged raw);
+- score = equally-weighted mean of the harmonized logD values, uncertainty = std over them.
 """
 
 from __future__ import annotations
 
 import math
 
-import pytest
-
 from core.models import Endpoint, ModelName
-from endpoints.lipophilicity.aggregate import (
-    ANCHOR_TOLERANCE,
-    DEFAULT_PH,
-    MEASURED_LOGD_ANCHOR,
-    aggregate,
-    logp_to_logd,
-)
+from endpoints.lipophilicity.aggregate import FEATURE, aggregate, logp_to_logd
 
 PROV = {"model": "test"}
 
 
-def one(records, **kw):
-    """Score a single molecule and return its per-molecule result (aggregate() returns a `.molecules` batch)."""
-    return aggregate(records, **kw).molecules[0]
+def opera(logd: float | None = None, *, pka_b: float | None = None, conf: float | None = None) -> dict:
+    ev: dict = {}
+    if logd is not None:
+        ev["LogD"] = logd
+    if pka_b is not None:
+        ev["pKa_b"] = pka_b
+    unc = {"conf_index": conf} if conf is not None else None
+    return {"model": ModelName.opera, "endpoint_values": ev, "uncertainty": unc, "raw": {}, "provenance": PROV}
+
+
+def admet_ai(logd: float) -> dict:
+    return {"model": ModelName.admet_ai, "endpoint_values": {"Lipophilicity_AstraZeneca": logd},
+            "uncertainty": None, "raw": {}, "provenance": PROV}
 
 
 def crippen(logp: float) -> dict:
-    return {
-        "model": ModelName.rdkit_crippen,
-        "endpoint_values": {"logP_crippen": logp, "MR": 90.0},
-        "uncertainty": None,
-        "raw": {},
-        "provenance": PROV,
-    }
+    return {"model": ModelName.rdkit_crippen, "endpoint_values": {"logP_crippen": logp},
+            "uncertainty": None, "raw": {}, "provenance": PROV}
 
 
-def swissadme(consensus_logp: float) -> dict:
-    return {
-        "model": ModelName.swissadme,
-        "endpoint_values": {"WLOGP": consensus_logp, "MLOGP": consensus_logp, "Consensus_logP": consensus_logp},
-        "uncertainty": None,
-        "raw": {},
-        "provenance": PROV,
-    }
+def swissadme(logp: float) -> dict:
+    return {"model": ModelName.swissadme, "endpoint_values": {"Consensus_logP": logp},
+            "uncertainty": None, "raw": {}, "provenance": PROV}
 
 
-def opera_logd(logd: float, conf: float | None = 0.74) -> dict:
-    return {
-        "model": ModelName.opera,
-        "endpoint_values": {"LogD": logd},
-        "uncertainty": {"conf_index": conf} if conf is not None else None,
-        "raw": {},
-        "provenance": PROV,
-    }
+def _feature(mol):
+    assert len(mol.features) == 1
+    f = mol.features[0]
+    assert f.feature == FEATURE
+    return f
 
 
-def opera_pka_b(pka_b: float) -> dict:
-    return {
-        "model": ModelName.opera,
-        "endpoint_values": {"pKa_b": pka_b},
-        "uncertainty": None,
-        "raw": {},
-        "provenance": PROV,
-    }
+def _src(feature, model):
+    return next(s for s in feature.sources if s.model == model)
 
 
-def admet_ai_logd(logd: float) -> dict:
-    return {
-        "model": ModelName.admet_ai,
-        "endpoint_values": {"Lipophilicity_AstraZeneca": logd},
-        "uncertainty": None,
-        "raw": {},
-        "provenance": PROV,
-    }
+# -------------------------------------------------------------------------- native logD passthrough
+def test_native_logd_lenses_pass_through():
+    f = _feature(aggregate({"m": [opera(1.17, conf=0.66), admet_ai(0.82)]}).molecules[0])
+    o, a = _src(f, "opera"), _src(f, "admet_ai")
+    assert o.value == 1.17 and o.raw is None       # native: no transform, raw stays None
+    assert a.value == 0.82
+    assert "conf_index=0.66" in o.note
 
 
-def test_admet_ai_is_a_native_logd_lens_needing_no_pka():
-    """Regression: admet_ai's Lipophilicity_AstraZeneca is native logD7.4 and must enter the consensus
-    directly (no pKa conversion), like OPERA. It was previously silently dropped (no aggregator branch)."""
-    res = one([admet_ai_logd(1.1)])  # NO pKa provided anywhere - a native logD lens needs none
-    assert res.n_lenses == 1
-    lens = res.lenses[0]
-    assert lens.model == ModelName.admet_ai
-    assert lens.raw_kind == "logD"
-    assert lens.converted is False
-    assert lens.logd == pytest.approx(1.1)
-    assert res.consensus == pytest.approx(1.1)
+# -------------------------------------------------------------------------- logP -> logD conversion (F-12)
+def test_logp_lens_converts_to_logd_with_shared_pka_and_keeps_raw():
+    # OPERA supplies the shared pKa_b; Crippen's raw logP is corrected to logD before entering the score.
+    f = _feature(aggregate({"m": [opera(pka_b=9.56), crippen(2.5775)]}).molecules[0])
+    c = _src(f, "rdkit_crippen")
+    expected = logp_to_logd(2.5775, 9.56, ph=7.4, kind="base")
+    assert math.isclose(c.value, expected)
+    assert (c.raw, c.raw_unit) == (2.5775, "logP")   # native logP retained
+    assert math.isclose(expected, 0.4146, abs_tol=1e-3)  # the real propranolol number
 
 
-# --------------------------------------------------------------------------------------------------
-# Henderson-Hasselbalch conversion (the F-16 placeholder).
-# --------------------------------------------------------------------------------------------------
-def test_logp_to_logd_base_and_acid():
-    # base: logD = logP - log10(1 + 10**(pKa - pH))
-    expected_base = 3.0 - math.log10(1 + 10 ** (9.0 - 7.4))
-    assert logp_to_logd(3.0, 9.0, ph=7.4, kind="base") == pytest.approx(expected_base)
-    # acid: logD = logP - log10(1 + 10**(pH - pKa))
-    expected_acid = 3.0 - math.log10(1 + 10 ** (7.4 - 4.0))
-    assert logp_to_logd(3.0, 4.0, ph=7.4, kind="acid") == pytest.approx(expected_acid)
-    # a basic center well above pH is essentially fully ionized -> logD << logP
-    assert logp_to_logd(3.0, 9.0, kind="base") < 3.0 - 1.0
+def test_injected_pka_overrides_and_converts_swissadme():
+    f = _feature(aggregate({"m": [swissadme(3.0)]}, pka=9.0).molecules[0])
+    s = _src(f, "swissadme")
+    assert math.isclose(s.value, logp_to_logd(3.0, 9.0))
 
 
-def test_logp_to_logd_rejects_bad_kind():
-    with pytest.raises(ValueError):
-        logp_to_logd(1.0, 7.0, kind="zwitterion")
+def test_logp_lens_without_pka_is_excluded_but_raw_kept():
+    # No OPERA pKa and no injection: the logP cannot be harmonized, so value=None (out of the score).
+    f = _feature(aggregate({"m": [crippen(2.58)]}).molecules[0])
+    c = _src(f, "rdkit_crippen")
+    assert c.value is None and c.raw == 2.58
+    assert f.score is None and f.n_sources == 1   # the read is carried (raw visible), just not scored
 
 
-# --------------------------------------------------------------------------------------------------
-# Tight cluster -> low spread, trust, consensus near the anchor.
-# --------------------------------------------------------------------------------------------------
-def test_tight_cluster_low_spread_and_trust():
-    pka = 8.9  # base; conversion subtracts ~1.51 log units
-    drop = math.log10(1 + 10 ** (pka - DEFAULT_PH))
-    records = [crippen(2.5), swissadme(2.6), opera_logd(1.0)]
-
-    res = one(records, pka=pka)
-
-    assert res.endpoint == Endpoint.lipophilicity
-    assert res.n_lenses == 3
-    assert res.spread_flag == "low"
-    assert res.trust is True
-    assert res.recommend_measured_anchor is False
-    # consensus = mean of [2.5-drop, 2.6-drop, 1.0]
-    expected = ((2.5 - drop) + (2.6 - drop) + 1.0) / 3
-    assert res.consensus == pytest.approx(expected)
-    assert res.spread_range <= 1.0
-    # near the measured anchor
-    assert abs(res.consensus - MEASURED_LOGD_ANCHOR) <= ANCHOR_TOLERANCE
+# -------------------------------------------------------------------------- score = mean, uncertainty = std
+def test_score_is_mean_and_uncertainty_is_std_over_logd():
+    f = _feature(aggregate({"m": [opera(1.17), admet_ai(0.82)]}).molecules[0])
+    vals = [1.17, 0.82]
+    mean = sum(vals) / 2
+    var = sum((x - mean) ** 2 for x in vals) / 2
+    assert f.n_sources == 2
+    assert math.isclose(f.score, mean)
+    assert math.isclose(f.uncertainty, math.sqrt(var))
 
 
-# --------------------------------------------------------------------------------------------------
-# Scattered set -> high spread flag.
-# --------------------------------------------------------------------------------------------------
-def test_scattered_set_high_spread():
-    pka = 8.9
-    records = [crippen(6.0), swissadme(1.0), opera_logd(1.0)]
-
-    res = one(records, pka=pka)
-
-    assert res.n_lenses == 3
-    assert res.spread_flag == "high"
-    assert res.trust is False
-    assert res.recommend_measured_anchor is True
-    assert res.spread_range > 1.0
+def test_convergent_lenses_lower_uncertainty_than_divergent():
+    tight = _feature(aggregate({"m": [opera(1.0), admet_ai(1.05)]}).molecules[0])
+    wide = _feature(aggregate({"m": [opera(1.0), admet_ai(4.0)]}).molecules[0])
+    assert tight.uncertainty < wide.uncertainty
 
 
-# --------------------------------------------------------------------------------------------------
-# logP lenses are CONVERTED before entering the consensus (F-12).
-# --------------------------------------------------------------------------------------------------
-def test_logp_lenses_are_converted_before_consensus():
-    pka = 8.9
-    res = one([crippen(2.5), swissadme(2.6), opera_logd(1.0)], pka=pka)
-
-    by_model = {l.model: l for l in res.lenses}
-    crip = by_model[ModelName.rdkit_crippen]
-    swiss = by_model[ModelName.swissadme]
-    op = by_model[ModelName.opera]
-
-    # logP lenses: raw_kind logP, converted True, logd == the H-H value (NOT the raw logP)
-    assert crip.raw_kind == "logP" and crip.converted is True
-    assert crip.logd == pytest.approx(logp_to_logd(2.5, pka, kind="base"))
-    assert crip.logd != pytest.approx(crip.raw_value)
-    assert swiss.raw_kind == "logP" and swiss.converted is True
-    # native logD lens: passes through, carries OPERA's Conf_index_LogD
-    assert op.raw_kind == "logD" and op.converted is False
-    assert op.logd == pytest.approx(1.0)
-    assert op.confidence == pytest.approx(0.74)
+# -------------------------------------------------------------------------- subsets / fallbacks
+def test_single_source_has_score_but_no_uncertainty():
+    f = _feature(aggregate({"m": [admet_ai(0.82)]}).molecules[0])
+    assert f.score == 0.82 and f.uncertainty is None and f.n_sources == 1
 
 
-# --------------------------------------------------------------------------------------------------
-# No shared pKa: raw logP lenses are kept OUT of the logD consensus (never averaged raw), F-12.
-# --------------------------------------------------------------------------------------------------
-def test_no_pka_excludes_logp_lenses_from_consensus():
-    # rdkit (logP) + opera (native logD), and NO pKa anywhere.
-    res = one([crippen(4.0), opera_logd(1.05)])
-
-    assert res.pka_used is None
-    # only the native logD lens reaches the axis
-    assert res.n_lenses == 1
-    assert res.consensus == pytest.approx(1.05)
-    crip = next(l for l in res.lenses if l.model == ModelName.rdkit_crippen)
-    assert crip.converted is False and crip.logd is None
-    assert any("kept OUT of the logD consensus" in n for n in res.notes)
+def test_no_lipophilicity_source_yields_null_score():
+    rec = {"model": ModelName.bayesherg, "endpoint_values": {"P_block": 0.5},
+           "uncertainty": None, "raw": {}, "provenance": PROV}
+    f = _feature(aggregate({"m": [rec]}).molecules[0])
+    assert f.score is None and f.uncertainty is None and f.n_sources == 0
 
 
-def test_no_lens_at_all_yields_undefined_consensus():
-    # only logP lenses, no pKa -> nothing reaches the logD axis
-    res = one([crippen(4.0), swissadme(3.5)])
-    assert res.consensus is None
-    assert res.n_lenses == 0
-    assert res.spread_flag == "high"
-    assert res.recommend_measured_anchor is True
+# -------------------------------------------------------------------------- shape / plumbing
+def test_endpoint_identity_and_uniform_shape():
+    res = aggregate({"m": [admet_ai(0.82)]})
+    assert res.endpoint == Endpoint.lipophilicity and res.n_molecules == 1
+    mol = res.molecules[0]
+    assert mol.endpoint == Endpoint.lipophilicity and mol.mol_id == "m"
+    assert set(type(mol).model_fields) == {"endpoint", "mol_id", "features"}
+    assert set(type(mol.features[0]).model_fields) == {"feature", "score", "uncertainty", "unit", "n_sources", "sources"}
 
 
-# --------------------------------------------------------------------------------------------------
-# Shared pKa placeholder is read from OPERA pKa_b (F-13) when not injected.
-# --------------------------------------------------------------------------------------------------
-def test_pka_resolved_from_opera_pka_b_record():
-    pka = 8.9
-    records = [crippen(2.5), opera_pka_b(pka), opera_logd(1.0)]
-
-    res = one(records)  # no injected pka
-
-    assert res.pka_used == pytest.approx(pka)
-    assert res.pka_source == "opera:pKa_b"
-    assert res.pka_kind == "base"
-    crip = next(l for l in res.lenses if l.model == ModelName.rdkit_crippen)
-    assert crip.converted is True
-    assert crip.logd == pytest.approx(logp_to_logd(2.5, pka, kind="base"))
-
-
-def test_injected_pka_overrides_records():
-    records = [crippen(2.5), opera_pka_b(5.0)]
-    res = one(records, pka=8.9)
-    assert res.pka_used == pytest.approx(8.9)
-    assert res.pka_source == "injected"
-
-
-# --------------------------------------------------------------------------------------------------
-# A consensus far from measured logD ~= 1 lowers trust even when spread is low (task t40 anchor rule).
-# --------------------------------------------------------------------------------------------------
-def test_consensus_far_from_anchor_raises_flag_even_if_converged():
-    # low basic pKa -> conversion is negligible, so the logP lenses stay high and tightly clustered.
-    pka = 3.0
-    records = [crippen(5.0), swissadme(5.05), opera_logd(5.0)]
-
-    res = one(records, pka=pka)
-
-    assert res.spread_flag == "low"  # they converge...
-    assert res.trust is False        # ...but far from the measured anchor
-    assert res.recommend_measured_anchor is True
-    assert abs(res.consensus - MEASURED_LOGD_ANCHOR) > ANCHOR_TOLERANCE
-    assert any("from measured logD" in r for r in res.flag_reasons)
-
-
-def test_deferred_boundaries_are_flagged():
-    res = one([opera_logd(1.05)])
-    joined = " ".join(res.deferred)
-    assert "F-13" in joined and "F-16" in joined
-
-
-# --------------------------------------------------------------------------------------------------
-# The shared contract: aggregate() takes {mol_id: records} and returns one result per molecule.
-# --------------------------------------------------------------------------------------------------
-def test_batch_scores_each_molecule_independently():
-    res = aggregate({"A": [opera_logd(1.0)], "B": [opera_logd(2.0)]}, pka=8.9)
-    assert res.n_molecules == 2
-    assert [m.mol_id for m in res.molecules] == ["A", "B"]
-    assert res.molecules[0].consensus == pytest.approx(1.0)
-    assert res.molecules[1].consensus == pytest.approx(2.0)
+def test_full_four_lens_ensemble():
+    recs = [opera(1.17, pka_b=9.56), admet_ai(0.82), crippen(2.5775), swissadme(2.98)]
+    f = _feature(aggregate({"m": recs}).molecules[0])
+    assert f.n_sources == 4               # all four reached the logD axis (pKa available)
+    assert f.score is not None and f.uncertainty is not None
