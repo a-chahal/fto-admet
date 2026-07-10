@@ -109,7 +109,7 @@ _ROWS: tuple[tuple[ModelName, Endpoint, bool, bool, str, bool], ...] = (
     (ModelName.bbb_score, Endpoint.distribution, False, True, "CODE-ALGO", True),
     (ModelName.boiled_egg, Endpoint.distribution, False, True, "CODE-ALGO", True),
     (ModelName.cns_mpo, Endpoint.distribution, False, True, "CODE-ALGO", True),
-    (ModelName.pgp, Endpoint.distribution, False, True, "CODE", True),
+    (ModelName.pgp, Endpoint.distribution, False, False, "DERIVED", False),
     (ModelName.watanabe_pgp_brain, Endpoint.distribution, False, False, "WEB-ONLY", False),
     (ModelName.ochem_ppb, Endpoint.ppb, False, True, "CODE-API", True),
     (ModelName.sfi, Endpoint.solubility, False, True, "CODE-ALGO", True),

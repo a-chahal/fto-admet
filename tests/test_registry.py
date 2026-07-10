@@ -39,6 +39,7 @@ NO_ENV_MODELS = {
     ModelName.watanabe_pgp_brain,
     ModelName.protox,
     ModelName.pbpk,
+    ModelName.pgp,  # DERIVED: efflux read from admet_ai in the aggregator, never dispatched (no env)
 }
 
 # Hard GPU requirement (gpu = "yes"); "opt" collapses to False.
@@ -51,6 +52,7 @@ NOT_BULK_MODELS = {
     ModelName.watanabe_pgp_brain,
     ModelName.aizynthfinder,
     ModelName.protox,
+    ModelName.pgp,  # DERIVED: efflux read from admet_ai in the aggregator, never dispatched
 }
 
 

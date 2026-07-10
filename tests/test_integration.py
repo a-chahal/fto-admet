@@ -60,6 +60,7 @@ EXPECTED_NO_ENV = {
     ModelName.watanabe_pgp_brain,
     ModelName.protox,
     ModelName.pbpk,
+    ModelName.pgp,  # DERIVED: efflux read from admet_ai in the aggregator, never dispatched (no env)
 }
 
 

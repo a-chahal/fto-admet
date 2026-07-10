@@ -14,10 +14,11 @@ Selection is exactly the contract query::
     [spec for spec in REGISTRY.values() if endpoint in spec.endpoints and spec.in_bulk_loop]
 
 ``in_bulk_loop`` is what keeps the web-only / shortlist models (``watanabe_*``, ``protox``,
-``aizynthfinder``, ``pbpk``) out of the automatic enumeration; they are
-run out of band and transcribed by hand. Cross-cutting models (``admet_ai``,
-``boiled_egg``, ``opera``, ``pgp``) carry several endpoints in their ``endpoints`` set, so the same
-model is legitimately dispatched under each endpoint it feeds (IO_SPEC §2).
+``aizynthfinder``, ``pbpk``) and the derived ``pgp`` (its efflux value is read from admet_ai's
+``Pgp_Broccatelli`` in the aggregator, never dispatched) out of the automatic enumeration. The
+web-only / shortlist models are run out of band and transcribed by hand. Cross-cutting models
+(``admet_ai``, ``boiled_egg``, ``opera``) carry several endpoints in their ``endpoints`` set, so the
+same model is legitimately dispatched under each endpoint it feeds (IO_SPEC §2).
 
 The aggregator runs in the **core** env on already-collected outputs, never on the models' mutually
 incompatible deps (SETTLED §3). It is loaded dynamically by convention (``endpoints/<ep>/aggregate.py``
