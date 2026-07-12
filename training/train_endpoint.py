@@ -130,8 +130,9 @@ def train(feature_key: str, *, root: Path) -> FusionSpec:
         source_specs.append(SourceCalibration(model=s["model"], kind=s["calibration"], params=params,
                                               impute_value=float(np.mean(gx[tr]))))
     C = np.column_stack(calibrated_cols)
+    reg = r["fusion"].get("regularization")
     weights, intercept = fitmod.fit_fusion(C[tr], y[tr], method=r["fusion"]["method"],
-                                           regularization=r["fusion"].get("regularization") or 0.1)
+                                           regularization=0.1 if reg is None else float(reg))
     w = np.array([weights[i] for i in range(len(srcs))])
     pred = C @ w + intercept
 

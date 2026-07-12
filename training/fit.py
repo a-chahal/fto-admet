@@ -64,7 +64,7 @@ def fit_fusion(
         coef, _ = nnls(A, y)                           # non-negative on weights AND intercept
         weights = {i: float(coef[i]) for i in range(k)}
         return weights, float(coef[k])
-    if method == "ridge":
+    if method in ("ridge", "linear"):   # "linear" = OLS/ridge; used for single-source features
         r = Ridge(alpha=regularization, fit_intercept=True).fit(C, y)
         return {i: float(r.coef_[i]) for i in range(k)}, float(r.intercept_)
     if method == "logistic":
