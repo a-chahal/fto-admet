@@ -1,0 +1,55 @@
+{
+  "feature": "pgp_efflux",
+  "endpoint": "distribution",
+  "target": {
+    "name": "mdr1_mdck_log_er",
+    "units": "log",
+    "transform": "identity"
+  },
+  "sources": [
+    {
+      "model": "admet_ai",
+      "kind": "linear",
+      "params": [
+        0.24425221542389378,
+        0.30755294189603494
+      ],
+      "impute_value": 0.3853169010221353
+    }
+  ],
+  "fusion": {
+    "weights": {
+      "admet_ai": 1.0000000000000007
+    },
+    "intercept": -1.6653345369377348e-16,
+    "method": "linear",
+    "regularization": 0.0
+  },
+  "uncertainty": {
+    "method": "normalized_conformal",
+    "alpha": 0.1,
+    "quantile": 2.1589470256627132,
+    "scale": "constant",
+    "scale_floor": 0.0,
+    "constant_width": 0.5
+  },
+  "provenance": {
+    "dataset": "biogen_adme_2023",
+    "dataset_hash": "sha256:9a77cebfe14b9695",
+    "exclusion_index_hash": null,
+    "n_train": 1536,
+    "n_calib": 512,
+    "metrics": {
+      "test_mae": 0.5851200581596672,
+      "test_r2": 0.016131095973794585,
+      "test_spearman": 0.12565677477984846,
+      "best_single_source_r2": 0.016131095973794696,
+      "fusion_uplift_r2": -1.1102230246251565e-16,
+      "test_conformal_coverage": 0.8947368421052632,
+      "n_test": 513.0
+    },
+    "trained_at": null,
+    "git_sha": "7311adedb7fb7169a0b843fc9773bf3661d0dc2b",
+    "notes": null
+  }
+}

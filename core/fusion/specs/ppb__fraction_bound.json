@@ -1,0 +1,55 @@
+{
+  "feature": "fraction_bound",
+  "endpoint": "ppb",
+  "target": {
+    "name": "human_fraction_bound",
+    "units": "fraction_bound",
+    "transform": "identity"
+  },
+  "sources": [
+    {
+      "model": "admet_ai",
+      "kind": "linear",
+      "params": [
+        1.1309388040687984,
+        -0.15508844988874548
+      ],
+      "impute_value": 0.7770511436635233
+    }
+  ],
+  "fusion": {
+    "weights": {
+      "admet_ai": 1.0000000000000007
+    },
+    "intercept": 0.0,
+    "method": "linear",
+    "regularization": 0.0
+  },
+  "uncertainty": {
+    "method": "normalized_conformal",
+    "alpha": 0.1,
+    "quantile": 2.2317640683271653,
+    "scale": "constant",
+    "scale_floor": 0.0,
+    "constant_width": 0.1
+  },
+  "provenance": {
+    "dataset": "biogen_adme_2023",
+    "dataset_hash": "sha256:a24311b81b531391",
+    "exclusion_index_hash": null,
+    "n_train": 105,
+    "n_calib": 35,
+    "metrics": {
+      "test_mae": 0.1189399316454933,
+      "test_r2": 0.6637957584952965,
+      "test_spearman": 0.873870721381039,
+      "best_single_source_r2": 0.6637957584952969,
+      "fusion_uplift_r2": -4.440892098500626e-16,
+      "test_conformal_coverage": 0.8285714285714286,
+      "n_test": 35.0
+    },
+    "trained_at": null,
+    "git_sha": "a8c752d62ff00cf70968c2dc7b00dee739be0f47",
+    "notes": null
+  }
+}

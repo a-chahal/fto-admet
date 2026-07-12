@@ -1,0 +1,55 @@
+{
+  "feature": "hepatocyte_clint",
+  "endpoint": "clearance",
+  "target": {
+    "name": "hlm_microsomal_clint",
+    "units": "log_mL_min_kg",
+    "transform": "identity"
+  },
+  "sources": [
+    {
+      "model": "admet_ai",
+      "kind": "linear",
+      "params": [
+        0.008696037080989524,
+        0.8087189196612664
+      ],
+      "impute_value": 1.317287355055153
+    }
+  ],
+  "fusion": {
+    "weights": {
+      "admet_ai": 1.0
+    },
+    "intercept": 4.440892098500626e-16,
+    "method": "linear",
+    "regularization": 0.0
+  },
+  "uncertainty": {
+    "method": "normalized_conformal",
+    "alpha": 0.1,
+    "quantile": 2.8440707121468964,
+    "scale": "constant",
+    "scale_floor": 0.0,
+    "constant_width": 0.3
+  },
+  "provenance": {
+    "dataset": "biogen_adme_2023",
+    "dataset_hash": "sha256:d2d012a0ad3fb4bf",
+    "exclusion_index_hash": null,
+    "n_train": 1795,
+    "n_calib": 598,
+    "metrics": {
+      "test_mae": 0.4638271300782748,
+      "test_r2": 0.19919075940892128,
+      "test_spearman": 0.45890622088640987,
+      "best_single_source_r2": 0.19919075940892117,
+      "fusion_uplift_r2": 1.1102230246251565e-16,
+      "test_conformal_coverage": 0.8797996661101837,
+      "n_test": 599.0
+    },
+    "trained_at": null,
+    "git_sha": "a8c752d62ff00cf70968c2dc7b00dee739be0f47",
+    "notes": null
+  }
+}
