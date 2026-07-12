@@ -52,16 +52,45 @@ def _hash_df(df: pd.DataFrame) -> str:
     return "sha256:" + hashlib.sha256(pd.util.hash_pandas_object(df, index=True).values.tobytes()).hexdigest()[:16]
 
 
-def _subtract_leakage(data: pd.DataFrame, exclude_models: list[str], index_path: Path) -> pd.DataFrame:
-    """Drop rows whose InChIKey appears in any excluded model's training union (the exclusion index)."""
+# Registry model name -> the name used in the exclusion index. ochem_ppb / bbb_score are GAPS (not in the
+# index: OCHEM is behind a login wall, BBB Score behind an ACS paywall), so their training molecules cannot
+# be subtracted - surfaced as a warning + stamped in the spec, never silently ignored.
+INDEX_MODEL_NAME: dict[str, str] = {
+    "admet_ai": "ADMET-AI_v2", "opera": "OPERA", "pksmart": "PKSmart",
+    "bayesherg": "BayeshERG", "cardiotox_net": "CardioTox", "cardiogenai": "CardioGenAI",
+    "boiled_egg": "BOILED-Egg",
+}
+INDEX_GAPS: frozenset[str] = frozenset({"ochem_ppb", "bbb_score"})
+
+
+def _subtract_leakage(
+    data: pd.DataFrame, exclude_models: list[str], index_path: Path
+) -> tuple[pd.DataFrame, list[str]]:
+    """Drop rows whose InChIKey is in any excluded model's training union. Returns (kept, unsubtractable_gaps).
+
+    Model names are mapped registry -> index. A contributing model that is not in the index (OCHEM PPB,
+    BBB Score) cannot be subtracted; it is returned in the gap list so the caller records the residual
+    contamination risk on the spec rather than pretending the set is fully clean.
+    """
     if not index_path.exists():
         raise FileNotFoundError(
             f"exclusion index not found at {index_path}; run the exclusion-index builder first."
         )
     idx = pd.read_parquet(index_path)
-    tainted = set(idx.loc[idx["model"].isin(exclude_models), "inchikey"])
+    index_names, gaps = [], []
+    for m in exclude_models:
+        if m in INDEX_MODEL_NAME:
+            index_names.append(INDEX_MODEL_NAME[m])
+        elif m in INDEX_GAPS:
+            gaps.append(m)
+        else:
+            raise KeyError(f"no exclusion-index mapping for model {m!r} (add it to INDEX_MODEL_NAME)")
+    if gaps:
+        print(f"WARNING: cannot subtract training molecules for {gaps} (not in the exclusion index); "
+              f"residual contamination possible - stamped on the spec.")
+    tainted = set(idx.loc[idx["model"].isin(index_names), "inchikey"])
     kept = data[~data["inchikey"].isin(tainted)].copy()
-    return kept
+    return kept, sorted(gaps)
 
 
 def train(feature_key: str, *, root: Path, alpha_default: float = 0.1) -> FusionSpec:
@@ -73,8 +102,8 @@ def train(feature_key: str, *, root: Path, alpha_default: float = 0.1) -> Fusion
 
     # 1-2. clean data (standardized, with inchikey + label), then 3. subtract leakage.
     data = ds.load(tgt["dataset"])
-    data = _subtract_leakage(data, r.get("leakage", {}).get("exclude_models", []),
-                             root / "training" / "exclusion_index" / "index.parquet")
+    data, gaps = _subtract_leakage(data, r.get("leakage", {}).get("exclude_models", []),
+                                   root / "training" / "exclusion_index" / "index.parquet")
     if len(data) < 50:
         raise RuntimeError(f"{feature_key}: only {len(data)} clean molecules after subtraction; too few.")
 
@@ -129,6 +158,7 @@ def train(feature_key: str, *, root: Path, alpha_default: float = 0.1) -> Fusion
             n_train=int(cut), n_calib=int(len(df) - cut),
             metrics={"mae": float(np.mean(np.abs(y[cal] - pred[cal]))), "conformal_coverage": coverage},
             git_sha=_git_sha(),
+            notes=(f"unsubtractable contributors (not in exclusion index): {gaps}" if gaps else None),
         ),
     )
     _SPECS.mkdir(parents=True, exist_ok=True)
