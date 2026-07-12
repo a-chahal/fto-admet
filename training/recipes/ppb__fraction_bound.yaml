@@ -9,18 +9,18 @@ target:
   dataset: biogen_adme_2023
   loader_kwargs: {target: ppb}
   note: >
-    Biogen human PPB (LOG % unbound) converted to fraction_bound to match the aggregator's feature. Trained
-    as a real 2-source ensemble (admet_ai + opera). ochem_ppb is dropped from TRAINING (slow live API + not
-    in the exclusion index); it stays in the aggregator but is not in this spec.
+    Biogen human PPB (LOG % unbound) converted to fraction_bound to match the aggregator's feature. opera was
+    dropped from TRAINING (screening cost; NNLS empirically zeroed its weight in the committed 3-source spec
+    - structurally redundant with admet_ai). It stays a live inference source in the aggregator. ochem_ppb is
+    kept as a training source but is an exclusion-index GAP (residual contamination flagged on the spec).
 
-sources:                                       # a real 3-source ensemble (fault-tolerant screening handles bad molecules)
+sources:                                       # admet_ai + ochem_ppb (opera dropped from training)
   - {model: admet_ai,  calibration: linear}
   - {model: ochem_ppb, calibration: linear}
-  - {model: opera,     calibration: linear}    # opera FuB already inverted to fraction_bound upstream
 
 fusion: {method: nnls, regularization: 0.1}
 uncertainty: {method: normalized_conformal, alpha: 0.1, scale: disagreement_std, scale_floor: 0.02}
 
 leakage:
-  exclude_models: [admet_ai, opera, ochem_ppb]  # ochem is an index GAP -> flagged + stamped, not subtractable
-  note: subtract TDC PPBR_AZ + OPERA FuB by InChIKey; ochem_ppb residual contamination flagged on the spec.
+  exclude_models: [admet_ai, ochem_ppb]         # ochem is an index GAP -> flagged + stamped, not subtractable
+  note: subtract TDC PPBR_AZ by InChIKey; ochem_ppb residual contamination flagged on the spec. (opera dropped from training.)

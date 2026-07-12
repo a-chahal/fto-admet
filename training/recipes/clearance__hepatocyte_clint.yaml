@@ -10,15 +10,16 @@ target:
   loader_kwargs: {target: hlm_clint}
   note: >
     Accepted the clean sibling (microsomal CLint) over exact-matrix hepatocyte, per sign-off. Trained as a
-    2-source ensemble (opera Clint + admet_ai); the feature is now calibrated to microsomal CLint.
+    single-source admet_ai fit calibrated to microsomal CLint. opera was dropped from TRAINING (screening
+    it costs hours and it added no uplift here); it stays a live inference source in the aggregator. Re-add
+    + retrain WITH opera later to formally confirm redundancy.
 
-sources:                                       # 2-source ensemble (opera CLint + admet_ai)
-  - {model: opera,    calibration: linear}
+sources:                                       # single-source admet_ai (opera dropped from training)
   - {model: admet_ai, calibration: linear}
 
 fusion: {method: nnls, regularization: 0.1}
-uncertainty: {method: normalized_conformal, alpha: 0.1, scale: disagreement_std, scale_floor: 0.1}
+uncertainty: {method: normalized_conformal, alpha: 0.1, scale: constant, constant_width: 0.3}
 
 leakage:
-  exclude_models: [admet_ai, opera]
-  note: subtract TDC Clearance_Hepatocyte_AZ + OPERA Clint (Dawson) by InChIKey.
+  exclude_models: [admet_ai]
+  note: subtract TDC Clearance_Hepatocyte_AZ by InChIKey. (opera dropped from training.)
