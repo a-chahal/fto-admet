@@ -3,14 +3,14 @@ endpoint: solubility
 priority: high         # first PILOT (cleanest turnkey data, single source)
 
 target:
-  name: solubility_clnd_ph6_8     # SIGNED-OFF sibling: Biogen CLND at pH 6.8
+  name: solubility_ph6_8_logmolar   # SIGNED-OFF sibling: Biogen LOG SOLUBILITY pH 6.8, converted to log(mol/L)
   units: log_mol_per_L
-  transform: identity             # already logS
-  dataset: biogen_adme_2023       # CLND solubility (~2,173), ~9-molecule overlap with AqSolDB
-  label_column: solubility_logS
+  transform: identity               # already logS
+  dataset: biogen_adme_2023
+  loader_kwargs: {target: solubility}   # selects the Biogen solubility column + ug/mL -> log(mol/L) via MW
   note: >
-    Accepted the clean sibling (CLND @ pH 6.8) over thermodynamic @ 7.4, per sign-off. Essentially clean
-    vs admet_ai (AqSolDB). This is the recommended first pilot to validate the calibration + conformal path.
+    Accepted the clean sibling (pH 6.8) over thermodynamic @ 7.4, per sign-off. Essentially clean vs
+    admet_ai (AqSolDB). First pilot: validates the calibration + conformal path end to end.
 
 sources:
   - {model: admet_ai, calibration: linear}   # Solubility_AqSolDB logS (single source)
