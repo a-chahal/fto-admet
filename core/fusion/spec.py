@@ -52,7 +52,7 @@ class Fusion(BaseModel):
 
     weights: dict[str, float]                             # model -> wᵢ
     intercept: float = 0.0
-    method: Literal["nnls", "ridge", "logistic", "equal"] = "equal"
+    method: Literal["nnls", "ridge", "linear", "logistic", "equal"] = "equal"
     regularization: float | None = None                  # ridge/elastic-net lambda, if used
 
 
