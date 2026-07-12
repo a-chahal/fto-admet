@@ -142,9 +142,18 @@ def train(feature_key: str, *, root: Path) -> FusionSpec:
                                                 alpha=unc_cfg.get("alpha", 0.1), floor=floor)
 
     # HONEST test-set metrics (held out from both the fit and the conformal calibration).
+    from scipy.stats import spearmanr
+
+    def _r2(true: np.ndarray, p: np.ndarray) -> float:
+        return float(1 - np.sum((true - p) ** 2) / np.sum((true - true.mean()) ** 2))
+
     test_mae = float(np.mean(np.abs(y[te] - pred[te])))
-    test_r2 = float(1 - np.sum((y[te] - pred[te]) ** 2) / np.sum((y[te] - y[te].mean()) ** 2))
+    test_r2 = _r2(y[te], pred[te])
     test_cov = conformal.empirical_coverage(y[te] - pred[te], scale[te], Q, floor=floor)
+    test_spearman = float(spearmanr(y[te], pred[te]).correlation)
+    # best SINGLE source alone (its calibrated column = its standalone prediction) -> did fusion add value?
+    best_single_r2 = max(_r2(y[te], C[te, j]) for j in range(C.shape[1]))
+    fusion_uplift_r2 = test_r2 - best_single_r2
 
     spec = FusionSpec(
         feature=feature, endpoint=endpoint,
@@ -159,8 +168,9 @@ def train(feature_key: str, *, root: Path) -> FusionSpec:
         provenance=Provenance(
             dataset=tgt["dataset"], dataset_hash=_hash_df(data),
             n_train=int(n_tr), n_calib=int(n_cal),
-            metrics={"test_mae": test_mae, "test_r2": test_r2, "test_conformal_coverage": test_cov,
-                     "n_test": float(len(te))},
+            metrics={"test_mae": test_mae, "test_r2": test_r2, "test_spearman": test_spearman,
+                     "best_single_source_r2": best_single_r2, "fusion_uplift_r2": fusion_uplift_r2,
+                     "test_conformal_coverage": test_cov, "n_test": float(len(te))},
             git_sha=_git_sha(),
             notes=(f"unsubtractable contributors (not in exclusion index): {gaps}" if gaps else None),
         ),
@@ -178,8 +188,9 @@ def main(argv: list[str] | None = None) -> int:
     root = args.root or Path(os.environ.get("FTO_ADMET_ROOT", "."))
     spec = train(args.feature, root=root)
     m = spec.provenance.metrics
-    print(f"wrote core/fusion/specs/{args.feature}.json | "
-          f"test_mae={m['test_mae']:.3f} test_r2={m['test_r2']:.3f} coverage={m['test_conformal_coverage']:.3f} "
+    print(f"wrote {args.feature}.json | r2={m['test_r2']:.3f} spearman={m['test_spearman']:.3f} "
+          f"mae={m['test_mae']:.3f} best_single_r2={m['best_single_source_r2']:.3f} "
+          f"uplift={m['fusion_uplift_r2']:+.3f} coverage={m['test_conformal_coverage']:.3f} "
           f"(n_test={int(m['n_test'])})")
     return 0
 

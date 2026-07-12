@@ -3,18 +3,18 @@ endpoint: distribution
 priority: high         # drives brain Kp,uu
 
 target:
-  name: mdr1_mdck_efflux_ratio
+  name: mdr1_mdck_log_er
   units: log
-  transform: log       # ER spans orders of magnitude
-  dataset: biogen_adme_2023      # MDR1-MDCK ER - a PERFECT clean match (continuous, non-ChEMBL)
-  label_column: mdr1_mdck_er
-  note: Biogen MDR1-MDCK efflux ratio is the single best clean source; Broccatelli is binary (no ER contamination).
+  transform: identity           # Biogen column is already LOG MDR1-MDCK ER
+  dataset: biogen_adme_2023
+  loader_kwargs: {target: mdr1_mdck_er}
+  note: Biogen MDR1-MDCK efflux ratio - a clean, continuous, non-ChEMBL match; Broccatelli is binary (no ER contamination).
 
+# admet_ai Pgp_Broccatelli is a probability; calibrate it LINEARLY onto the continuous log ER (single source).
 sources:
-  - {model: admet_ai, calibration: logistic}   # Pgp_Broccatelli P(substrate) -> log ER via monotone map
-                                                # (single source in-loop -> calibration + conformal, no fusion)
+  - {model: admet_ai, calibration: linear}
 
-fusion: {method: logistic, regularization: 0.1}
+fusion: {method: linear, regularization: 0.0}
 uncertainty: {method: normalized_conformal, alpha: 0.1, scale: constant, constant_width: 0.5}
 
 leakage:
