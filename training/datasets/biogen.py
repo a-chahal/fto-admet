@@ -21,9 +21,10 @@ from training.standardize import standardize
 # our target key -> (raw Biogen column, conversion). "ugml_to_logmolar" needs MW; others are identity.
 _COLUMNS: dict[str, tuple[str, str]] = {
     "solubility": ("LOG SOLUBILITY PH 6.8 (ug/mL)", "ugml_to_logmolar"),
-    "ppb": ("LOG PLASMA PROTEIN BINDING (HUMAN) (% unbound)", "identity"),  # log(% unbound); calibration absorbs +2
-    "hlm_clint": ("LOG HLM_CLint (mL/min/kg)", "identity"),
-    "mdr1_mdck_er": ("LOG MDR1-MDCK ER (B-A/A-B)", "identity"),
+    # Biogen gives LOG(% unbound); the ppb feature is fraction_bound, so convert: fb = 1 - 10^log / 100.
+    "ppb": ("LOG PLASMA PROTEIN BINDING (HUMAN) (% unbound)", "log_pctunbound_to_fraction_bound"),
+    "hlm_clint": ("LOG HLM_CLint (mL/min/kg)", "identity"),          # already log
+    "mdr1_mdck_er": ("LOG MDR1-MDCK ER (B-A/A-B)", "identity"),      # already log
 }
 
 
@@ -54,7 +55,9 @@ def load(target: str = "solubility") -> pd.DataFrame:
         smiles, ik, ik14, mw = std
         label = float(y)
         if conv == "ugml_to_logmolar":
-            label = label - 3.0 - math.log10(mw)     # log(ug/mL) -> log(mol/L)
+            label = label - 3.0 - math.log10(mw)                 # log(ug/mL) -> log(mol/L)
+        elif conv == "log_pctunbound_to_fraction_bound":
+            label = 1.0 - (10.0 ** label) / 100.0                # log(% unbound) -> fraction bound (0-1)
         rows.append({"smiles": smiles, "mol_id": str(r["Internal ID"]),
                      "label": label, "inchikey": ik, "inchikey14": ik14})
     return pd.DataFrame(rows)

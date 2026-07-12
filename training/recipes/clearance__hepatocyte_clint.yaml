@@ -3,14 +3,14 @@ endpoint: clearance
 priority: medium
 
 target:
-  name: microsomal_clint          # SIGNED-OFF sibling: Biogen is HLM microsomal, not hepatocyte
-  units: uL/min/mg
-  transform: log
-  dataset: biogen_adme_2023       # HLM CLint (~3,087), clean vs the AZ hepatocyte set
-  label_column: hlm_clint
+  name: hlm_microsomal_clint     # SIGNED-OFF sibling: Biogen HLM microsomal, not hepatocyte
+  units: log_mL_min_kg
+  transform: identity            # Biogen column is already LOG HLM_CLint
+  dataset: biogen_adme_2023
+  loader_kwargs: {target: hlm_clint}
   note: >
-    Accepted the clean sibling (microsomal CLint) over exact-matrix hepatocyte, per sign-off.
-    Document that this feature is now calibrated to microsomal CLint.
+    Accepted the clean sibling (microsomal CLint) over exact-matrix hepatocyte, per sign-off. Trained as a
+    2-source ensemble (opera Clint + admet_ai); the feature is now calibrated to microsomal CLint.
 
 sources:
   - {model: opera,    calibration: linear}

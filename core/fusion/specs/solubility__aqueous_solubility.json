@@ -42,11 +42,14 @@
     "metrics": {
       "test_mae": 0.4391938189453605,
       "test_r2": 0.34831979425563664,
+      "test_spearman": 0.6443449181666955,
+      "best_single_source_r2": 0.34831979425563664,
+      "fusion_uplift_r2": 0.0,
       "test_conformal_coverage": 0.8841607565011821,
       "n_test": 423.0
     },
     "trained_at": null,
-    "git_sha": "235dc5f58ef3c94feba9aead5cd2f559e8950227",
+    "git_sha": "eed140426eab61d5970eee9ecff1f6f0439aefee",
     "notes": null
   }
 }
