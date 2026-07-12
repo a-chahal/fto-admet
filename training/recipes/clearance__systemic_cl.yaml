@@ -1,0 +1,27 @@
+feature: systemic_cl
+endpoint: clearance
+priority: medium
+
+target:
+  name: human_iv_cl
+  units: mL/min/kg
+  transform: log
+  dataset: fda_temporal_cl        # NO clean legacy set (Lombardo 2018 is near-exhaustive)
+  label_column: cl
+  note: >
+    Human in vivo CL is scarce and Lombardo 2018 covers the public domain. Build a temporal hold-out of
+    recent FDA approvals (2023-2025) with published human CL; do not claim a clean legacy benchmark.
+
+sources:
+  - {model: pksmart, calibration: linear}   # single source
+
+fusion: {method: linear, regularization: 0.0}   # 1 source: calibration only
+uncertainty:
+  method: normalized_conformal
+  alpha: 0.1
+  scale: native_sigma            # pksmart fold-error is the per-molecule sigma (no disagreement to use)
+  scale_floor: 0.1
+
+leakage:
+  exclude_models: [pksmart]
+  note: subtract Lombardo 2018 (1,352 human IV) by InChIKey.

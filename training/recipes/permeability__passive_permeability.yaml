@@ -1,0 +1,22 @@
+feature: passive_permeability
+endpoint: permeability
+priority: low          # likely moot for FTO-43 (intratumoral / osmotic-pump delivery)
+
+target:
+  name: caco2_papp
+  units: log_cm_per_s
+  transform: identity   # log Papp
+  dataset: chembl_temporal_caco2   # Biogen has no Caco-2 (uses MDCK); temporal ChEMBL slice minus Wang
+  label_column: caco2_logPapp
+  note: mixed-scale feature (Caco2 log Papp + PAMPA prob); calibration makes them commensurable.
+
+sources:
+  - {model: admet_ai, calibration: linear}     # Caco2_Wang (log Papp)
+  - {model: admet_ai, calibration: logistic}   # PAMPA_NCATS (prob) - same model, second head
+
+fusion: {method: ridge, regularization: 0.5}
+uncertainty: {method: normalized_conformal, alpha: 0.1, scale: disagreement_std, scale_floor: 0.2}
+
+leakage:
+  exclude_models: [admet_ai]
+  note: subtract TDC Caco2_Wang + PAMPA_NCATS by InChIKey.

@@ -1,0 +1,28 @@
+# Training recipe for lipophilicity/logD. Reviewed scientific choices live here (not in code).
+feature: logD
+endpoint: lipophilicity
+priority: high
+
+target:
+  name: logD7.4
+  units: log
+  transform: identity            # already log space
+  dataset: chembl_temporal_logD  # NO clean turnkey set (Biogen has no logD column)
+  label_column: logD
+  note: >
+    Build a temporal ChEMBL v34/v35 logD7.4 slice (assay_type=B, shake-flask/chromatographic),
+    then InChIKey-subtract the training unions below.
+
+# Values fed to fusion are the aggregator's already-harmonized logD (logP lenses converted via H-H).
+sources:
+  - {model: opera,         calibration: linear}
+  - {model: admet_ai,      calibration: linear}
+  - {model: rdkit_crippen, calibration: linear}   # deterministic (WLOGP); still fit a slope to the target
+  - {model: swissadme,     calibration: linear}   # deterministic
+
+fusion: {method: nnls, regularization: 0.1}       # non-negative weights over 4 correlated logD estimators
+uncertainty: {method: normalized_conformal, alpha: 0.1, scale: disagreement_std, scale_floor: 0.05}
+
+leakage:
+  exclude_models: [admet_ai, opera]               # crippen/swissadme have no molecule training set
+  note: subtract ChEMBL3301363 (TDC AZ logD) + OPERA PHYSPROP logP/logD by InChIKey.

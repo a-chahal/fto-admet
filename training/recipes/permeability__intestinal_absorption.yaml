@@ -1,0 +1,22 @@
+feature: intestinal_absorption
+endpoint: permeability
+priority: low          # likely moot for FTO-43 (delivery route)
+
+target:
+  name: human_fraction_absorbed
+  units: fraction
+  transform: logit      # Fa in [0,1]
+  dataset: chembl_temporal_hia
+  label_column: fraction_absorbed
+  note: HIA/Fa, NOT %F (which convolves gut/hepatic metabolism). Clean HIA data is scarce -> temporal hold-out.
+
+sources:
+  - {model: admet_ai,   calibration: logistic}   # HIA_Hou (prob)
+  - {model: boiled_egg, calibration: linear}     # HIA boolean 0/1
+
+fusion: {method: ridge, regularization: 0.5}
+uncertainty: {method: normalized_conformal, alpha: 0.1, scale: disagreement_std, scale_floor: 0.05}
+
+leakage:
+  exclude_models: [admet_ai]
+  note: subtract TDC HIA_Hou + BOILED-Egg HIA 660-compound derivation set by InChIKey.

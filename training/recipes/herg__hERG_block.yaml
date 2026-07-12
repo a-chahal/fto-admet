@@ -1,0 +1,33 @@
+feature: hERG_block
+endpoint: herg
+priority: high
+
+target:
+  name: hERG_pIC50
+  units: pIC50
+  transform: identity
+  dataset: chembl_temporal_herg   # NO clean legacy set; temporal ChEMBL patch-clamp slice only
+  label_column: pIC50
+  note: >
+    hERG is the most-contaminated endpoint. Cut a ChEMBL v34/v35 manual patch-clamp slice
+    (assay_type=B, IC50, standard_units=nM), temporal after training cutoffs, then subtract ALL unions.
+
+# admet_ai/bayesherg/cardiotox emit P(block); cardiogenai emits pIC50. The fit calibrates each to pIC50.
+sources:
+  - {model: admet_ai,       calibration: logistic}   # P(block) -> pIC50 via a monotone map
+  - {model: bayesherg,      calibration: logistic}
+  - {model: cardiotox_net,  calibration: logistic}
+  - {model: cardiogenai,    calibration: linear}      # native pIC50; now IN the fit (was carried-only)
+
+fusion: {method: ridge, regularization: 0.5}
+uncertainty:
+  method: normalized_conformal
+  alpha: 0.1
+  scale: disagreement_std          # bayesherg native alea/epis can later feed native_sigma instead
+  scale_floor: 0.1
+
+leakage:
+  exclude_models: [admet_ai, bayesherg, cardiotox_net, cardiogenai]
+  note: >
+    subtract TDC hERG + BayeshERG (14,322 fine-tune + hERGCentral pretrain) + CardioTox (train + Test-I/II/III)
+    + CardioGenAI/CToxPred train+eval by InChIKey. Temporal slice is the only defensible option.

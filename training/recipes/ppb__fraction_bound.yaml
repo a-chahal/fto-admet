@@ -1,0 +1,26 @@
+feature: fraction_bound
+endpoint: ppb
+priority: high
+
+target:
+  name: human_fu
+  units: fraction_unbound
+  transform: log                 # fit in log(fu) space (free drug spans orders of magnitude near 1)
+  dataset: biogen_adme_2023      # human PPB (~194 clean) + optional ChEMBL temporal slice
+  label_column: human_fu
+  note: >
+    Score is reported as fraction_bound = 1 - fu; the fit is done in log(fu). Biogen human PPB is small
+    (~194); optionally augment with a ChEMBL temporal slice after subtraction.
+
+# Aggregator feeds harmonized fraction_bound values; fit maps them to log(fu).
+sources:
+  - {model: admet_ai,  calibration: linear}
+  - {model: ochem_ppb, calibration: linear}
+  - {model: opera,     calibration: linear}       # opera FuB already inverted to fraction_bound upstream
+
+fusion: {method: nnls, regularization: 0.1}
+uncertainty: {method: normalized_conformal, alpha: 0.1, scale: disagreement_std, scale_floor: 0.02}
+
+leakage:
+  exclude_models: [admet_ai, ochem_ppb, opera]
+  note: subtract TDC PPBR_AZ + OCHEM PPB set + OPERA FuB set by InChIKey (all three are ML).

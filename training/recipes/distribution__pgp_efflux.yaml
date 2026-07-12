@@ -1,0 +1,22 @@
+feature: pgp_efflux
+endpoint: distribution
+priority: high         # drives brain Kp,uu
+
+target:
+  name: mdr1_mdck_efflux_ratio
+  units: log
+  transform: log       # ER spans orders of magnitude
+  dataset: biogen_adme_2023      # MDR1-MDCK ER - a PERFECT clean match (continuous, non-ChEMBL)
+  label_column: mdr1_mdck_er
+  note: Biogen MDR1-MDCK efflux ratio is the single best clean source; Broccatelli is binary (no ER contamination).
+
+sources:
+  - {model: admet_ai, calibration: logistic}   # Pgp_Broccatelli P(substrate) -> log ER via monotone map
+                                                # (single source in-loop -> calibration + conformal, no fusion)
+
+fusion: {method: logistic, regularization: 0.1}
+uncertainty: {method: normalized_conformal, alpha: 0.1, scale: constant, constant_width: 0.5}
+
+leakage:
+  exclude_models: [admet_ai]
+  note: subtract TDC Pgp_Broccatelli by InChIKey (binary; molecule identities only).

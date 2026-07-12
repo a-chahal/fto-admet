@@ -1,0 +1,49 @@
+# Toxicity panel: independent single-source features, each its own experimental target + clean superset.
+# All sources are ADMET-AI v2 heads (ML/TDC), so each needs its TDC set subtracted by InChIKey.
+# ClinTox is DROPPED (per sign-off: the label is an approval-status proxy, not measured toxicity).
+endpoint: toxicity
+priority: medium
+
+heads:
+  - feature: dili
+    target: {name: dili_binary, transform: logit, dataset: dilirank, label_column: dili_label}
+    calibration: logistic
+    leakage_note: subtract TDC DILI (475) from DILIrank/DILIst by InChIKey.
+
+  - feature: ames_mutagenicity
+    target: {name: ames_binary, transform: logit, dataset: hansen_ames, label_column: ames}
+    calibration: logistic
+    leakage_note: use Hansen minus TDC Xu-2012 (~common CCRIS/GeneTox); InChIKey subtract.
+
+  - feature: carcinogenicity
+    target: {name: carcinogen_binary, transform: logit, dataset: cpdb, label_column: carcinogen}
+    calibration: logistic
+    leakage_note: CPDB is the ancestral superset of Lagunin-278; de-dup by InChIKey.
+
+  - feature: skin_reaction
+    target: {name: skin_sensitization, transform: logit, dataset: niceatm_llna, label_column: sensitizer}
+    calibration: logistic
+    leakage_note: NICEATM/ICE LLNA export minus TDC Alves-2015.
+
+  - feature: acute_ld50
+    target: {name: rat_oral_ld50, units: neg_log_mol_per_kg, transform: identity, dataset: catmos, label_column: ld50}
+    calibration: linear
+    leakage_note: CATMoS (11,992) is the EPA superset of Zhu-2009; subtract Zhu by InChIKey.
+
+  # 12 Tox21 pathways - use ORIGINAL Tox21 Challenge splits or ToxCast (TDC's Tox21 is the MoleculeNet
+  # repack with dissolved splits + zeroed labels; do NOT benchmark against it).
+  - feature_group: tox21
+    features: [nr_ar, nr_ar_lbd, nr_ahr, nr_aromatase, nr_er, nr_er_lbd, nr_ppar_gamma,
+               sr_are, sr_atad5, sr_hse, sr_mmp, sr_p53]
+    target: {transform: logit, dataset: tox21_original, label_column: assay_label}
+    calibration: logistic
+    leakage_note: use original Tox21 Challenge held-out split or ToxCast non-challenge assays.
+
+fusion: {method: logistic}     # all single-source classification (LD50 is single-source regression)
+uncertainty: {method: normalized_conformal, alpha: 0.1, scale: constant, constant_width: 0.15}
+
+dropped:
+  - feature: clinical_toxicity
+    reason: >
+      ClinTox label is FDA-approval status (a proxy), not a measured toxicity. Dropped per sign-off;
+      substitute a measured endpoint (DILIrank / CATMoS) if a clinical-tox flag is later needed.

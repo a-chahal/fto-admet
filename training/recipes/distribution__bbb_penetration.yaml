@@ -1,0 +1,34 @@
+feature: bbb_penetration
+endpoint: distribution
+priority: highest      # THE endpoint that decides whether FTO-43 reaches the tumor
+
+target:
+  name: Kp_uu_brain
+  units: unitless      # unbound brain:plasma ratio
+  transform: log       # Kp,uu spans orders of magnitude; fit in log
+  dataset: kpuu_brain_compilation
+  label_column: kp_uu_brain
+  note: >
+    Kp,uu (NOT logBB, NOT binary). Clean vs our contributors (they are logBB/binary). Data is scarce
+    (~few hundred, mostly rat microdialysis) after InChIKey de-dup across compilations. Use logBB only as
+    a PRETRAIN/anchor, then fine-tune on Kp,uu. This is the highest-value, lowest-data endpoint.
+
+# This is the mixed-scale feature: sources are BBB_Score (0-6), BBB_Martins (prob), boiled_egg (bool).
+# Calibration is what makes them commensurable -> the score flips from None to real once trained.
+sources:
+  - {model: admet_ai,   calibration: linear}     # BBB_Martins probability
+  - {model: bbb_score,  calibration: linear}     # 0-6 desirability
+  - {model: boiled_egg, calibration: linear}     # boolean 0/1
+
+fusion: {method: ridge, regularization: 1.0}     # heavier regularization (small data, correlated sources)
+uncertainty: {method: normalized_conformal, alpha: 0.1, scale: disagreement_std, scale_floor: 0.1}
+
+leakage:
+  exclude_models: [admet_ai]                     # bbb_score/boiled_egg are rules (subtract their derivation sets too)
+  note: >
+    subtract TDC BBB_Martins + BBB Score 990-drug set + BOILED-Egg BBB derivation set by InChIKey. logBB
+    pretraining set (B3DB) must ALSO be subtracted from the Kp,uu evaluation.
+  pretrain:
+    dataset: b3db_logbb
+    target: logBB
+    note: anchor only; final target + evaluation are Kp,uu.

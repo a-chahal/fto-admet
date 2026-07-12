@@ -1,0 +1,23 @@
+feature: aqueous_solubility
+endpoint: solubility
+priority: high         # first PILOT (cleanest turnkey data, single source)
+
+target:
+  name: solubility_clnd_ph6_8     # SIGNED-OFF sibling: Biogen CLND at pH 6.8
+  units: log_mol_per_L
+  transform: identity             # already logS
+  dataset: biogen_adme_2023       # CLND solubility (~2,173), ~9-molecule overlap with AqSolDB
+  label_column: solubility_logS
+  note: >
+    Accepted the clean sibling (CLND @ pH 6.8) over thermodynamic @ 7.4, per sign-off. Essentially clean
+    vs admet_ai (AqSolDB). This is the recommended first pilot to validate the calibration + conformal path.
+
+sources:
+  - {model: admet_ai, calibration: linear}   # Solubility_AqSolDB logS (single source)
+
+fusion: {method: linear, regularization: 0.0}   # 1 source: calibration only, no fusion weights to learn
+uncertainty: {method: normalized_conformal, alpha: 0.1, scale: constant, constant_width: 0.5}
+
+leakage:
+  exclude_models: [admet_ai]
+  note: subtract AqSolDB (the 9,982-compound aggregation, incl. ESOL + Solubility Challenge 1) by InChIKey.

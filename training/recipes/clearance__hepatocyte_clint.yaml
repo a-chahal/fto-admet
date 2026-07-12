@@ -1,0 +1,24 @@
+feature: hepatocyte_clint
+endpoint: clearance
+priority: medium
+
+target:
+  name: microsomal_clint          # SIGNED-OFF sibling: Biogen is HLM microsomal, not hepatocyte
+  units: uL/min/mg
+  transform: log
+  dataset: biogen_adme_2023       # HLM CLint (~3,087), clean vs the AZ hepatocyte set
+  label_column: hlm_clint
+  note: >
+    Accepted the clean sibling (microsomal CLint) over exact-matrix hepatocyte, per sign-off.
+    Document that this feature is now calibrated to microsomal CLint.
+
+sources:
+  - {model: opera,    calibration: linear}
+  - {model: admet_ai, calibration: linear}
+
+fusion: {method: nnls, regularization: 0.1}
+uncertainty: {method: normalized_conformal, alpha: 0.1, scale: disagreement_std, scale_floor: 0.1}
+
+leakage:
+  exclude_models: [admet_ai, opera]
+  note: subtract TDC Clearance_Hepatocyte_AZ + OPERA Clint (Dawson) by InChIKey.

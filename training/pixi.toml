@@ -1,0 +1,20 @@
+# The offline trainer env. Cross-platform (no CUDA), like the core/root env: solvable + installed on the
+# laptop. Feature EXTRACTION runs on the box (screening frozen models); the FIT runs here in this env.
+[project]
+name = "fto-admet-training"
+channels = ["conda-forge"]
+platforms = ["osx-arm64", "linux-64"]
+
+[dependencies]
+python = "3.11.*"
+scikit-learn = ">=1.3"
+pandas = ">=2.0"
+numpy = ">=1.26"
+scipy = ">=1.11"
+rdkit = ">=2023.9"          # molecule standardization + InChIKey (leakage subtraction)
+pyyaml = ">=6.0"            # read training/recipes/*.yaml
+pyarrow = ">=14.0"          # read the exclusion-index parquet + feature matrices
+pydantic = ">=2.6"          # write FusionSpec (imported from core)
+
+[tasks]
+train = "python -m training.train_endpoint"

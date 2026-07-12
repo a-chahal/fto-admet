@@ -1,0 +1,8 @@
+# Training data + derived artifacts live on /zfs ($FTO_ADMET_ROOT/training/), never in the repo.
+# Belt-and-braces: ignore them if a run ever writes them locally. Recipes + code ARE committed.
+data/
+features/
+reports/
+exclusion_index/
+.pixi/
+__pycache__/
