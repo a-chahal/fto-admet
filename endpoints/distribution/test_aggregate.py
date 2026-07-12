@@ -70,9 +70,12 @@ def test_cns_mpo_is_a_separate_feature_not_folded_into_penetration():
 
 # -------------------------------------------------------------------------- efflux derived from generalist
 def test_pgp_efflux_derived_from_admet_ai():
+    # The aggregator's job: gather admet_ai's Pgp_Broccatelli via extract_pgp. The SCORE is now produced
+    # by the trained fusion spec (exact value tested in tests/test_fusion.py), so assert the source is
+    # preserved and a calibrated score + interval exist - not the raw number.
     f = _feat(aggregate({"m": [admet_ai(pgp=0.44)]}).molecules[0], EFFLUX)
-    assert f.score == 0.44 and f.uncertainty is None
-    assert _src(f, "admet_ai").value == 0.44
+    assert f.n_sources == 1 and _src(f, "admet_ai").value == 0.44   # raw source preserved via extract_pgp
+    assert f.score is not None and f.uncertainty is not None        # trained -> calibrated efflux + conformal interval
 
 
 # -------------------------------------------------------------------------- three features, uniform shape

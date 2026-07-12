@@ -38,9 +38,9 @@ from core.aggregate import (
     Feature,
     MoleculeVerdict,
     Source,
-    ensemble,
     normalize_molecules,
 )
+from core.fusion import fuse
 from core.models import Endpoint, ModelName
 from core.schemas import OutputRecord
 
@@ -88,7 +88,7 @@ def _hepatocyte_feature(records: Sequence[OutputRecord]) -> Feature:
             if v is not None:
                 sources.append(Source(model="admet_ai", value=v,
                                       note="ADMET-AI hepatocyte CLint (uL/min/10^6 cells); low-weight/qualitative (F-17)"))
-    score, uncertainty = ensemble([s.value for s in sources], [s.weight for s in sources])
+    score, uncertainty = fuse(Endpoint.clearance, HEPATOCYTE_CLINT, sources)  # trained spec -> calibration + conformal interval
     return Feature(feature=HEPATOCYTE_CLINT, score=score, uncertainty=uncertainty,
                    unit=HEPATOCYTE_CLINT_UNIT, n_sources=len(sources), sources=sources)
 
@@ -108,7 +108,7 @@ def _systemic_feature(records: Sequence[OutputRecord]) -> Feature:
         cl_fold = (unc.extra or {}).get(PKSMART_FOLD_ERROR_KEY) if unc is not None else None
         note = f"fold-error low={low} high={high} cl_fold={cl_fold}"
         sources.append(Source(model="pksmart", value=v, note=note))
-    score, uncertainty = ensemble([s.value for s in sources], [s.weight for s in sources])
+    score, uncertainty = fuse(Endpoint.clearance, SYSTEMIC_CL, sources)  # untrained -> equal-weight fallback
     return Feature(feature=SYSTEMIC_CL, score=score, uncertainty=uncertainty,
                    unit=SYSTEMIC_CL_UNIT, n_sources=len(sources), sources=sources)
 
@@ -123,7 +123,7 @@ def _microsomal_feature(records: Sequence[OutputRecord]) -> Feature:
         if v is not None:
             sources.append(Source(model="admet_ai", value=v,
                                   note="ADMET-AI microsomal CLint (uL/min/mg); low-weight/qualitative (F-17)"))
-    score, uncertainty = ensemble([s.value for s in sources], [s.weight for s in sources])
+    score, uncertainty = fuse(Endpoint.clearance, MICROSOMAL_CLINT, sources)  # untrained -> equal-weight fallback
     return Feature(feature=MICROSOMAL_CLINT, score=score, uncertainty=uncertainty,
                    unit=MICROSOMAL_CLINT_UNIT, n_sources=len(sources), sources=sources)
 

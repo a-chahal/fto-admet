@@ -34,9 +34,9 @@ from core.aggregate import (
     Feature,
     MoleculeVerdict,
     Source,
-    ensemble,
     normalize_molecules,
 )
+from core.fusion import fuse
 from core.models import Endpoint, ModelName
 from core.schemas import OutputRecord
 from endpoints.distribution.pgp.pgp import extract_pgp
@@ -100,7 +100,7 @@ def _druglikeness_feature(records: Sequence[OutputRecord]) -> Feature:
             v = _num((rec.endpoint_values or {}).get(CNS_MPO_KEY))
             if v is not None:
                 sources.append(Source(model="cns_mpo", value=v, note="CNS MPO, developability desirability"))
-    score, uncertainty = ensemble([s.value for s in sources], [s.weight for s in sources])
+    score, uncertainty = fuse(Endpoint.distribution, DRUGLIKENESS, sources)   # untrained -> equal-weight fallback
     return Feature(feature=DRUGLIKENESS, score=score, uncertainty=uncertainty,
                    unit="0-6 desirability (up = more CNS-druglike)", n_sources=len(sources), sources=sources)
 
@@ -113,7 +113,7 @@ def _efflux_feature(records: Sequence[OutputRecord]) -> Feature:
         if pgp.value is not None:
             sources.append(Source(model=pgp.source_model or "admet_ai", value=pgp.value,
                                   note=f"P-gp efflux via {pgp.source_key}"))
-    score, uncertainty = ensemble([s.value for s in sources], [s.weight for s in sources])
+    score, uncertainty = fuse(Endpoint.distribution, EFFLUX, sources)   # trained spec -> calibration + conformal interval
     return Feature(feature=EFFLUX, score=score, uncertainty=uncertainty,
                    unit="P(P-gp substrate) [0,1] (up = more efflux liability)",
                    n_sources=len(sources), sources=sources)

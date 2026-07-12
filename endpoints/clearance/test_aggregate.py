@@ -12,8 +12,6 @@ that must survive the shape change:
 
 from __future__ import annotations
 
-import math
-
 from core.models import Endpoint, ModelName
 from endpoints.clearance.aggregate import (
     HEPATOCYTE_CLINT,
@@ -58,31 +56,25 @@ def _src(feature, model):
     return next(s for s in feature.sources if s.model == model)
 
 
-# ------------------------------------------------------- hepatocyte_clint: clean same-unit ensemble
-def test_hepatocyte_clint_is_mean_and_std_over_same_units():
+# ------------------------------------------------------- hepatocyte_clint: trained fusion spec
+def test_hepatocyte_clint_gathers_both_sources_with_harmonized_values():
+    # The aggregator's job: gather OPERA Clint + ADMET-AI hepatocyte on the SAME units. The SCORE is now
+    # produced by the trained fusion spec (exact value tested in tests/test_fusion.py), so assert the
+    # sources are preserved with their harmonized values and a calibrated score + interval exist - not the
+    # raw mean/std.
     f = _feature(aggregate({"m": [opera_clint(8.0), admet_ai(hepatocyte=12.0)]}).molecules[0],
                  HEPATOCYTE_CLINT)
-    vals = [8.0, 12.0]
-    mean = sum(vals) / 2
-    var = sum((x - mean) ** 2 for x in vals) / 2
     assert f.n_sources == 2
-    assert math.isclose(f.score, mean)
-    assert math.isclose(f.uncertainty, math.sqrt(var))
-    assert f.unit == HEPATOCYTE_CLINT_UNIT
     assert {s.model for s in f.sources} == {"opera", "admet_ai"}
+    assert _src(f, "opera").value == 8.0 and _src(f, "admet_ai").value == 12.0  # raw sources preserved
+    assert f.score is not None and f.uncertainty is not None  # trained -> calibrated CLint + conformal interval
+    assert f.unit == HEPATOCYTE_CLINT_UNIT
 
 
-def test_hepatocyte_convergent_lower_uncertainty_than_divergent():
-    tight = _feature(aggregate({"m": [opera_clint(10.0), admet_ai(hepatocyte=10.5)]}).molecules[0],
-                     HEPATOCYTE_CLINT)
-    wide = _feature(aggregate({"m": [opera_clint(10.0), admet_ai(hepatocyte=40.0)]}).molecules[0],
-                    HEPATOCYTE_CLINT)
-    assert tight.uncertainty < wide.uncertainty
-
-
-def test_hepatocyte_single_source_has_score_but_no_uncertainty():
-    f = _feature(aggregate({"m": [opera_clint(8.0)]}).molecules[0], HEPATOCYTE_CLINT)
-    assert f.score == 8.0 and f.uncertainty is None and f.n_sources == 1
+def test_hepatocyte_single_admet_ai_source_yields_calibrated_score():
+    f = _feature(aggregate({"m": [admet_ai(hepatocyte=12.0)]}).molecules[0], HEPATOCYTE_CLINT)
+    assert f.n_sources == 1 and _src(f, "admet_ai").value == 12.0
+    assert f.score is not None and f.uncertainty is not None
 
 
 def test_hepatocyte_absent_yields_null_score():
@@ -138,11 +130,14 @@ def test_three_decomposed_features_with_distinct_units():
     assert units[HEPATOCYTE_CLINT] == "uL/min/10^6 cells (up = faster clearance)"
     assert units[SYSTEMIC_CL] == "mL/min/kg (whole-body IV clearance, up = faster)"
     assert units[MICROSOMAL_CLINT] == "uL/min/mg (up = faster clearance)"
-    # hepatocyte ensembled the two same-unit reads; the microsomal read stayed in its OWN feature.
-    assert _feature(mol, HEPATOCYTE_CLINT).n_sources == 2
+    # hepatocyte fused the two same-unit reads; the microsomal read stayed in its OWN feature.
+    hep = _feature(mol, HEPATOCYTE_CLINT)
+    assert hep.n_sources == 2
     assert _feature(mol, MICROSOMAL_CLINT).n_sources == 1
-    # ADMET-AI hepatocyte (12) and microsome (30) were never averaged: no 21.0 anywhere.
-    assert _feature(mol, HEPATOCYTE_CLINT).score == 10.0  # (8 + 12) / 2, microsome not involved
+    # ADMET-AI hepatocyte (12) and microsome (30) were never merged: only 8.0 + 12.0 fed the hepatocyte
+    # feature; the microsome value (30) never entered it.
+    assert {s.value for s in hep.sources} == {8.0, 12.0}
+    assert hep.score is not None
 
 
 # ------------------------------------------------------- shape / plumbing
@@ -157,9 +152,9 @@ def test_endpoint_identity_and_uniform_shape():
 
 
 def test_multiple_molecules_independent():
-    res = aggregate({"a": [opera_clint(8.0)], "b": [opera_clint(20.0)]})
+    res = aggregate({"a": [admet_ai(hepatocyte=8.0)], "b": [admet_ai(hepatocyte=20.0)]})
     by = {m.mol_id: _feature(m, HEPATOCYTE_CLINT).score for m in res.molecules}
-    assert by == {"a": 8.0, "b": 20.0}
+    assert by["a"] < by["b"]  # the calibration is monotone increasing: higher CLint still ranks higher
 
 
 def test_input_shapes_normalize_the_same():
@@ -167,9 +162,10 @@ def test_input_shapes_normalize_the_same():
     as_map = aggregate({"FTO-43": recs}).molecules[0]
     as_pairs = aggregate([("FTO-43", recs)]).molecules[0]
     as_dicts = aggregate([{"mol_id": "FTO-43", "records": recs}]).molecules[0]
+    scores = [_feature(m, HEPATOCYTE_CLINT).score for m in (as_map, as_pairs, as_dicts)]
+    assert len(set(scores)) == 1 and scores[0] is not None  # same input -> same fused score across shapes
     for m in (as_map, as_pairs, as_dicts):
         assert m.mol_id == "FTO-43"
-        assert _feature(m, HEPATOCYTE_CLINT).score == 12.0
 
 
 def test_empty_input_yields_empty_result():

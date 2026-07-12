@@ -1,12 +1,13 @@
-"""Tests for the ppb aggregator: one ``fraction_bound`` feature, score = mean, uncertainty = std.
+"""Tests for the ppb aggregator: one ``fraction_bound`` feature, scored by the trained fusion spec.
 
 Synthetic ``OutputRecord``-shaped inputs (laptop, core env - no box, no GPU). They pin the science that
-must survive the shape change:
+is the aggregator's real job - gathering + harmonizing the three native scales - and leave the exact
+fused number to ``tests/test_fusion.py`` (a trained spec now produces score + conformal interval):
 - the three native scales harmonize onto fraction_bound: OCHEM/ADMET-AI ``% / 100``, OPERA ``1 - FuB``
   (the inversion landmine - UP = more bound);
-- score = equally-weighted mean of the harmonized values, uncertainty = std over the same values;
-- each source keeps its native ``raw`` value + ``raw_unit``;
-- any subset (single source -> uncertainty None; none -> score None) is tolerated.
+- each source keeps its native ``raw`` value + ``raw_unit``, and its harmonized ``value`` is preserved;
+- when the spec's calibrated source is present a score + interval EXIST (not asserted to an exact value);
+- any empty / no-source subset is tolerated (score None).
 """
 
 from __future__ import annotations
@@ -52,6 +53,7 @@ def test_percent_sources_divide_by_100_and_keep_raw():
     assert math.isclose(o.value, 0.873)
     assert (o.raw, o.raw_unit) == (87.3, "% bound")
     assert a.value == 0.66 and (a.raw, a.raw_unit) == (66.0, "% bound")
+    assert f.score is not None and f.uncertainty is not None   # trained spec -> calibrated score + interval
 
 
 def test_opera_fub_is_inverted_to_fraction_bound():
@@ -67,28 +69,36 @@ def test_opera_fub_pred_key_alias_accepted():
     assert _src(f, "opera").value == 0.9
 
 
-# -------------------------------------------------------------------------- score = mean, uncertainty = std
-def test_score_is_mean_and_uncertainty_is_std_over_harmonized_values():
+# -------------------------------------------------------------------------- spec-aware scoring
+def test_all_three_sources_harmonized_and_scored():
+    # The aggregator's real job: gather + harmonize the three native scales onto fraction_bound. The SCORE
+    # is now produced by the trained fusion spec (exact value tested in tests/test_fusion.py), so assert the
+    # sources are preserved (inversion + %/100 intact) and a calibrated score + interval exist.
     f = _feature(aggregate({"m": [ochem(66.94), admet_ai(66.0), opera(0.29)]}).molecules[0])
-    vals = [0.6694, 0.66, 0.71]                 # the three harmonized fraction_bound values
-    mean = sum(vals) / 3
-    var = sum((x - mean) ** 2 for x in vals) / 3
     assert f.n_sources == 3
-    assert abs(f.score - mean) < 1e-9
-    assert abs(f.uncertainty - math.sqrt(var)) < 1e-9   # population std over the same values
+    assert math.isclose(_src(f, "ochem_ppb").value, 0.6694)
+    assert _src(f, "admet_ai").value == 0.66
+    assert _src(f, "opera").value == 0.71                 # the inversion survives harmonization
+    assert f.score is not None and f.uncertainty is not None
 
 
-def test_convergent_sources_have_low_uncertainty_divergent_high():
+def test_score_and_interval_exist_across_source_mixes():
+    # Under the trained spec the interval is the spec's conformal width, not the raw disagreement std, so
+    # convergent vs divergent inputs are not asserted to differ here (that lives in tests/test_fusion.py);
+    # both mixes still yield a calibrated score + interval.
     tight = _feature(aggregate({"m": [ochem(90.0), admet_ai(90.0), opera(0.1)]}).molecules[0])
     wide = _feature(aggregate({"m": [ochem(90.0), admet_ai(10.0), opera(0.9)]}).molecules[0])
-    assert tight.uncertainty < wide.uncertainty   # std is the disagreement signal
+    for f in (tight, wide):
+        assert f.score is not None and f.uncertainty is not None
 
 
 # -------------------------------------------------------------------------- subsets / graceful fallbacks
-def test_single_source_has_score_but_no_uncertainty():
+def test_single_spec_source_is_scored():
+    # admet_ai is the spec's calibrated source: a single admet_ai read still yields a score + interval
+    # (raw harmonized source preserved; the exact fused number lives in tests/test_fusion.py).
     f = _feature(aggregate({"m": [admet_ai(66.0)]}).molecules[0])
-    assert f.score == 0.66
-    assert f.uncertainty is None          # disagreement is undefined for one source
+    assert _src(f, "admet_ai").value == 0.66       # raw harmonized source preserved
+    assert f.score is not None and f.uncertainty is not None
     assert f.n_sources == 1
 
 
@@ -120,7 +130,7 @@ def test_endpoint_identity_and_shape():
 def test_multiple_molecules_independent():
     res = aggregate({"a": [admet_ai(20.0)], "b": [admet_ai(80.0)]})
     by = {m.mol_id: _feature(m).score for m in res.molecules}
-    assert by == {"a": 0.2, "b": 0.8}
+    assert by["a"] < by["b"]        # calibration is monotone increasing: more % bound still ranks higher
 
 
 def test_input_shapes_normalize_the_same():
@@ -128,6 +138,8 @@ def test_input_shapes_normalize_the_same():
     as_map = aggregate({"FTO-43": recs}).molecules[0]
     as_pairs = aggregate([("FTO-43", recs)]).molecules[0]
     as_dicts = aggregate([{"mol_id": "FTO-43", "records": recs}]).molecules[0]
+    scores = [_feature(m).score for m in (as_map, as_pairs, as_dicts)]
+    assert len(set(scores)) == 1        # same input -> same fused score across all input shapes
     for m in (as_map, as_pairs, as_dicts):
         assert m.mol_id == "FTO-43"
-        assert _feature(m).score == 0.66
+        assert _feature(m).score is not None

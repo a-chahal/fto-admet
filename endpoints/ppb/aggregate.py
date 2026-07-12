@@ -27,9 +27,9 @@ from core.aggregate import (
     Feature,
     MoleculeVerdict,
     Source,
-    ensemble,
     normalize_molecules,
 )
+from core.fusion import fuse
 from core.models import Endpoint, ModelName
 from core.schemas import OutputRecord
 
@@ -99,7 +99,7 @@ def _sources(records: Sequence[Any]) -> list[Source]:
 
 def _molecule(mol_id: str, records: Sequence[Any]) -> MoleculeVerdict:
     sources = _sources(records)
-    score, uncertainty = ensemble([s.value for s in sources], [s.weight for s in sources])
+    score, uncertainty = fuse(Endpoint.ppb, FEATURE, sources)   # trained spec if present, else equal-weight
     feature = Feature(
         feature=FEATURE, score=score, uncertainty=uncertainty, unit=UNIT,
         n_sources=len(sources), sources=sources,
