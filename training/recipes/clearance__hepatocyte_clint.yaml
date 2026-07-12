@@ -12,12 +12,13 @@ target:
     Accepted the clean sibling (microsomal CLint) over exact-matrix hepatocyte, per sign-off. Trained as a
     2-source ensemble (opera Clint + admet_ai); the feature is now calibrated to microsomal CLint.
 
-sources:
-  - {model: admet_ai, calibration: linear}   # single source: opera is flaky in bulk training screens
+sources:                                       # 2-source ensemble (opera CLint + admet_ai)
+  - {model: opera,    calibration: linear}
+  - {model: admet_ai, calibration: linear}
 
-fusion: {method: linear, regularization: 0.0}
-uncertainty: {method: normalized_conformal, alpha: 0.1, scale: constant, constant_width: 0.3}
+fusion: {method: nnls, regularization: 0.1}
+uncertainty: {method: normalized_conformal, alpha: 0.1, scale: disagreement_std, scale_floor: 0.1}
 
 leakage:
-  exclude_models: [admet_ai]
-  note: subtract TDC Clearance_Hepatocyte_AZ by InChIKey. (opera not trained on here; multi-source uplift deferred to logD/hERG.)
+  exclude_models: [admet_ai, opera]
+  note: subtract TDC Clearance_Hepatocyte_AZ + OPERA Clint (Dawson) by InChIKey.
