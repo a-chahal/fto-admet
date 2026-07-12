@@ -26,9 +26,9 @@ from core.aggregate import (
     Feature,
     MoleculeVerdict,
     Source,
-    ensemble,
     normalize_molecules,
 )
+from core.fusion import fuse
 from core.models import Endpoint, ModelName
 from core.schemas import OutputRecord
 
@@ -61,7 +61,7 @@ def _aqueous_feature(records: Sequence[OutputRecord]) -> Feature:
             v = _num((rec.endpoint_values or {}).get(ADMET_AI_KEY))
             if v is not None:
                 sources.append(Source(model="admet_ai", value=v, note="AqSolDB log S (up = more soluble)"))
-    score, uncertainty = ensemble([s.value for s in sources], [s.weight for s in sources])
+    score, uncertainty = fuse(Endpoint.solubility, AQUEOUS, sources)   # trained spec if present, else equal-weight
     return Feature(feature=AQUEOUS, score=score, uncertainty=uncertainty,
                    unit="log(mol/L) (up = more soluble)", n_sources=len(sources), sources=sources)
 
@@ -75,7 +75,7 @@ def _formulation_feature(records: Sequence[OutputRecord]) -> Feature:
             if v is not None:
                 sources.append(Source(model="sfi", value=v,
                                       note="different entity from thermodynamic solubility; not fused with logS"))
-    score, uncertainty = ensemble([s.value for s in sources], [s.weight for s in sources])
+    score, uncertainty = fuse(Endpoint.solubility, FORMULATION, sources)   # untrained -> equal-weight fallback
     return Feature(feature=FORMULATION, score=score, uncertainty=uncertainty,
                    unit="Solubility Forecast Index (down = more soluble / lower formulation risk)",
                    n_sources=len(sources), sources=sources)

@@ -36,12 +36,14 @@ def _src(feature, model):
 
 
 # -------------------------------------------------------------------------- aqueous solubility (log S)
-def test_aqueous_solubility_is_single_source_logs():
+def test_aqueous_solubility_gathers_admet_ai_source():
+    # The aggregator's job: gather admet_ai's harmonized value. The SCORE is now produced by the trained
+    # fusion spec (exact value tested in tests/test_fusion.py), so assert the source is preserved and a
+    # calibrated score + interval exist - not the raw number.
     f = _feat(aggregate({"m": [admet_ai(-4.2)]}).molecules[0], AQUEOUS)
-    assert f.score == -4.2 and f.uncertainty is None      # single source: no disagreement
-    assert f.n_sources == 1
+    assert f.n_sources == 1 and _src(f, "admet_ai").value == -4.2   # raw source preserved
+    assert f.score is not None and f.uncertainty is not None        # trained -> calibrated logS + conformal interval
     assert f.unit == "log(mol/L) (up = more soluble)"
-    assert _src(f, "admet_ai").value == -4.2
 
 
 # -------------------------------------------------------------------------- formulation risk (SFI)
@@ -61,8 +63,8 @@ def test_sfi_and_logs_are_separate_features_never_fused():
     # each carries only its own model - SFI is NOT co-ranked or averaged into the logS feature
     assert [s.model for s in aq.sources] == ["admet_ai"]
     assert [s.model for s in fr.sources] == ["sfi"]
-    # the native reads are preserved as-is (no negation, no rescale)
-    assert aq.score == -4.2 and fr.score == 5.0
+    # sources preserved as-is (no negation, no rescale); sfi is untrained so it falls back to the raw value
+    assert _src(aq, "admet_ai").value == -4.2 and fr.score == 5.0
 
 
 def test_two_features_and_uniform_shape():
@@ -103,7 +105,7 @@ def test_nonnumeric_value_is_not_a_source():
 def test_multiple_molecules_independent():
     res = aggregate({"a": [admet_ai(-2.0)], "b": [admet_ai(-6.0)]})
     by = {m.mol_id: _feat(m, AQUEOUS).score for m in res.molecules}
-    assert by == {"a": -2.0, "b": -6.0}
+    assert by["a"] > by["b"]        # the calibration is monotone increasing: higher logS still ranks higher
 
 
 def test_input_shapes_normalize_the_same():
@@ -111,9 +113,10 @@ def test_input_shapes_normalize_the_same():
     as_map = aggregate({"FTO-43": recs}).molecules[0]
     as_pairs = aggregate([("FTO-43", recs)]).molecules[0]
     as_dicts = aggregate([{"mol_id": "FTO-43", "records": recs}]).molecules[0]
+    scores = [_feat(m, AQUEOUS).score for m in (as_map, as_pairs, as_dicts)]
+    assert len(set(scores)) == 1        # same input -> same fused score across all input shapes
     for m in (as_map, as_pairs, as_dicts):
-        assert m.mol_id == "FTO-43"
-        assert _feat(m, AQUEOUS).score == -4.2 and _feat(m, FORMULATION).score == 5.0
+        assert m.mol_id == "FTO-43" and _feat(m, FORMULATION).score == 5.0
 
 
 def test_empty_input_yields_empty_verdict():
