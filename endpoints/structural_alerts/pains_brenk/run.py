@@ -63,6 +63,9 @@ def _build_catalog(*catalog_enums: Any) -> FilterCatalog:
 _CATS = FilterCatalogParams.FilterCatalogs
 PAINS_CATALOG = _build_catalog(_CATS.PAINS)
 BRENK_CATALOG = _build_catalog(_CATS.BRENK)
+# NIH: the NIH/MLSMR medicinal-chemistry alert set (reactive / assay-interfering motifs) as shipped in
+# RDKit's FilterCatalog - a third catalog alongside PAINS and BRENK.
+NIH_CATALOG = _build_catalog(_CATS.NIH)
 
 
 def _provenance() -> dict[str, Any]:
@@ -71,10 +74,10 @@ def _provenance() -> dict[str, Any]:
         "model": MODEL,
         "method": (
             "RDKit FilterCatalog substructure screen: PAINS (FilterCatalogs.PAINS = union of the "
-            "published A/B/C sub-catalogs, Baell & Holloway 2010) and BRENK (FilterCatalogs.BRENK, "
-            "Brenk et al. 2008). Per catalog: match boolean, matched-entry names, matched-atom indices, "
-            "and an alert count. Soft filter (over-flags): more alerts = more flagged, look-closer not "
-            "auto-kill."
+            "published A/B/C sub-catalogs, Baell & Holloway 2010), BRENK (FilterCatalogs.BRENK, "
+            "Brenk et al. 2008), and NIH (FilterCatalogs.NIH, the NIH/MLSMR medicinal-chemistry alert "
+            "set). Per catalog: match boolean, matched-entry names, matched-atom indices, and an alert "
+            "count. Soft filter (over-flags): more alerts = more flagged, look-closer not auto-kill."
         ),
         "rdkit_version": rdBase.rdkitVersion,
         "citation": (
@@ -83,7 +86,7 @@ def _provenance() -> dict[str, Any]:
             "J Med Chem 2010, 53(7):2719-2740, DOI 10.1021/jm901137j. "
             "Brenk R et al. \"Lessons Learnt from Assembling Screening Libraries for Drug Discovery for "
             "Neglected Diseases.\" ChemMedChem 2008, 3(3):435-444, DOI 10.1002/cmdc.200700139. "
-            "Alert SMARTS as shipped in RDKit's FilterCatalog."
+            "PAINS / BRENK / NIH alert SMARTS as shipped in RDKit's FilterCatalog."
         ),
         "license": "BSD-3-Clause (RDKit; the FilterCatalog SMARTS ship with RDKit).",
     }
@@ -168,6 +171,8 @@ def record_for(rec: dict[str, Any]) -> dict[str, Any]:
                 "PAINS_count": None,
                 "BRENK_hit": None,
                 "BRENK_count": None,
+                "NIH_hit": None,
+                "NIH_count": None,
             },
             "raw": {
                 "error": "RDKit could not parse SMILES (invalid or empty)",
@@ -178,6 +183,7 @@ def record_for(rec: dict[str, Any]) -> dict[str, Any]:
 
     pains = _screen(mol, PAINS_CATALOG)
     brenk = _screen(mol, BRENK_CATALOG)
+    nih = _screen(mol, NIH_CATALOG)
     return {
         **base,
         "endpoint_values": {
@@ -185,12 +191,15 @@ def record_for(rec: dict[str, Any]) -> dict[str, Any]:
             "PAINS_count": pains["count"],
             "BRENK_hit": brenk["hit"],
             "BRENK_count": brenk["count"],
+            "NIH_hit": nih["hit"],
+            "NIH_count": nih["count"],
         },
         "raw": {
             "smiles": smiles,
             "mol_id": mol_id,
             "PAINS_matches": pains["entries"],  # [{name, atoms}] - matched alert names + substructure
             "BRENK_matches": brenk["entries"],
+            "NIH_matches": nih["entries"],
             "soft_filter": True,  # over-flags; look-closer, not auto-kill (docs §24)
         },
     }

@@ -7,7 +7,7 @@ Three single-source count features, each a plain integer tally from one model (n
     -------   ------                     ----------                  -------
     pains     pains_brenk (t17)          endpoint_values.PAINS_count  # of PAINS substructure matches
     brenk     pains_brenk (t17)          endpoint_values.BRENK_count  # of BRENK substructure matches
-    nih       admet_ai (generalist)      endpoint_values.NIH_alert    # of NIH alerts (only admet_ai has this)
+    nih       pains_brenk (t17)          endpoint_values.NIH_count    # of NIH/MLSMR substructure matches
 
 These are DETERMINISTIC counts, not predictions: there is no real uncertainty over a substructure tally, so
 ``uncertainty`` is always ``None``. Counts are NEVER ensembled across models (a count from one filter set is
@@ -48,9 +48,10 @@ NIH = "nih"
 # The ONLY native keys this aggregator reads, per model (verified against the adapters).
 PAINS_COUNT_KEY = "PAINS_count"        # pains_brenk: int count of PAINS matches
 BRENK_COUNT_KEY = "BRENK_count"        # pains_brenk: int count of BRENK matches
-NIH_ALERT_KEY = "NIH_alert"            # admet_ai: int count of NIH alerts (no named source provides this)
+NIH_COUNT_KEY = "NIH_count"            # pains_brenk: int count of NIH/MLSMR matches
 PAINS_MATCHES_KEY = "PAINS_matches"    # pains_brenk raw: [{name, atoms}, ...] backing the PAINS count
 BRENK_MATCHES_KEY = "BRENK_matches"    # pains_brenk raw: [{name, atoms}, ...] backing the BRENK count
+NIH_MATCHES_KEY = "NIH_matches"        # pains_brenk raw: [{name, atoms}, ...] backing the NIH count
 
 
 def _as_output_record(rec: Any) -> OutputRecord:
@@ -119,8 +120,8 @@ def _molecule(mol_id: str, records: Sequence[Any]) -> MoleculeVerdict:
                        unit="count of PAINS matches (0 = clean)", matches_key=PAINS_MATCHES_KEY),
         _count_feature(recs, model=ModelName.pains_brenk, key=BRENK_COUNT_KEY, feature=BRENK,
                        unit="count of BRENK matches (0 = clean)", matches_key=BRENK_MATCHES_KEY),
-        _count_feature(recs, model=ModelName.admet_ai, key=NIH_ALERT_KEY, feature=NIH,
-                       unit="count of NIH alerts (0 = clean)"),
+        _count_feature(recs, model=ModelName.pains_brenk, key=NIH_COUNT_KEY, feature=NIH,
+                       unit="count of NIH/MLSMR matches (0 = clean)", matches_key=NIH_MATCHES_KEY),
     ]
     return MoleculeVerdict(endpoint=Endpoint.structural_alerts, mol_id=mol_id, features=features)
 
