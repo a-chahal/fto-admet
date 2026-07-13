@@ -54,6 +54,7 @@ class Fusion(BaseModel):
     intercept: float = 0.0
     method: Literal["nnls", "ridge", "linear", "logistic", "equal"] = "equal"
     regularization: float | None = None                  # ridge/elastic-net lambda, if used
+    link: Literal["identity", "logistic"] = "identity"   # "logistic": score = sigmoid(Σwᵢ·gᵢ + intercept) -> a probability
 
 
 class UncertaintySpec(BaseModel):

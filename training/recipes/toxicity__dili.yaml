@@ -1,0 +1,24 @@
+feature: dili
+endpoint: toxicity
+priority: medium
+
+target:
+  name: dili_binary
+  units: probability
+  transform: logit               # binary target; the fit is logistic (classification path)
+  dataset: dilirank
+  label_column: label
+  note: >
+    Binary classification head: calibrate admet_ai's dili probability to the measured dilirank label.
+    fusion.method logistic -> AUC / Spearman / Brier + a logistic link (probability output), no conformal
+    interval. Single-source, so this is validation (discrimination) of the admet_ai head, not fusion.
+
+sources:
+  - {model: admet_ai, calibration: logistic}
+
+fusion: {method: logistic}
+uncertainty: {method: none}
+
+leakage:
+  exclude_models: [admet_ai]
+  note: subtract TDC DILI by InChIKey (the collected set is its superset; survivors = molecules admet_ai never trained on).

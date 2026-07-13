@@ -1,0 +1,25 @@
+feature: nr_ppar_gamma
+endpoint: toxicity
+priority: medium
+
+target:
+  name: nr_ppar_gamma_active
+  units: probability
+  transform: logit               # binary target; the fit is logistic (classification path)
+  dataset: tox21_original
+  loader_kwargs: {assay: nr_ppar_gamma}
+  label_column: label
+  note: >
+    Binary classification head: calibrate admet_ai's nr_ppar_gamma probability to the measured tox21_original label.
+    fusion.method logistic -> AUC / Spearman / Brier + a logistic link (probability output), no conformal
+    interval. Single-source, so this is validation (discrimination) of the admet_ai head, not fusion.
+
+sources:
+  - {model: admet_ai, calibration: logistic}
+
+fusion: {method: logistic}
+uncertainty: {method: none}
+
+leakage:
+  exclude_models: [admet_ai]
+  note: subtract TDC Tox21_NR-PPAR_GAMMA by InChIKey (the collected set is its superset; survivors = molecules admet_ai never trained on).

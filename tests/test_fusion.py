@@ -91,6 +91,21 @@ def test_no_matching_source_yields_none():
     assert apply_spec(spec, [_src("other", 1.0)]) == (None, None)
 
 
+def test_logistic_link_squashes_score_to_probability():
+    # A classification spec (fusion.link == "logistic") sigmoids the weighted sum into a probability.
+    spec = FusionSpec(
+        feature="f", endpoint="ep", target=Target(name="t", units="prob", transform="logit"),
+        sources=[SourceCalibration(model="a", kind="identity")],
+        fusion=Fusion(weights={"a": 1.0}, intercept=0.0, method="logistic", link="logistic"),
+        uncertainty=UncertaintySpec(),  # method "none" -> no interval for classification
+        provenance=Provenance(dataset="test"),
+    )
+    score, unc = apply_spec(spec, [_src("a", 0.0)])
+    assert math.isclose(score, 0.5) and unc is None            # sigmoid(0) = 0.5, no conformal interval
+    hi, _ = apply_spec(spec, [_src("a", 4.0)])
+    assert 0.0 < score < hi < 1.0                              # monotone, bounded in (0,1)
+
+
 def test_boolean_source_is_calibrated_as_zero_one():
     # A trained calibration treats a boolean flag as a 0/1 indicator (the equal-weight ensemble rejects
     # bools, but a fit calibration of e.g. BOILED-Egg's in-yolk BBB call is a meaningful 0/1 feature).

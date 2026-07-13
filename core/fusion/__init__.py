@@ -131,6 +131,8 @@ def apply_spec(spec: FusionSpec, sources: Sequence[Source]) -> tuple[float | Non
         total += weight * cv
         calibrated.append(cv)
 
+    if spec.fusion.link == "logistic":               # classification: the weighted sum is a logit
+        total = 1.0 / (1.0 + math.exp(-total))       # -> squash to a probability in [0,1]
     return total, _conformal_halfwidth(spec.uncertainty, calibrated)
 
 

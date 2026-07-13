@@ -155,24 +155,46 @@ def train(feature_key: str, *, root: Path) -> FusionSpec:
     w = np.array([weights[i] for i in range(len(srcs))])
     pred = C @ w + intercept
 
-    scale = _scale(C, unc_cfg)
-    floor = unc_cfg.get("scale_floor", 0.0)
-    Q = conformal.normalized_conformal_quantile(y[cal] - pred[cal], scale[cal],
-                                                alpha=unc_cfg.get("alpha", 0.1), floor=floor)
-
-    # HONEST test-set metrics (held out from both the fit and the conformal calibration).
+    # 6. HONEST held-out metrics + the fit's inference recipe, branching on objective. Regression:
+    #    R2 / Spearman / MAE + a normalized-conformal INTERVAL. Classification (fusion.method == "logistic",
+    #    a binary target): AUC / Spearman / Brier + a logistic link (apply_spec sigmoids the score into a
+    #    probability), and NO conformal interval (classification needs prediction sets, deferred).
     from scipy.stats import spearmanr
 
     def _r2(true: np.ndarray, p: np.ndarray) -> float:
         return float(1 - np.sum((true - p) ** 2) / np.sum((true - true.mean()) ** 2))
 
-    test_mae = float(np.mean(np.abs(y[te] - pred[te])))
-    test_r2 = _r2(y[te], pred[te])
-    test_cov = conformal.empirical_coverage(y[te] - pred[te], scale[te], Q, floor=floor)
-    test_spearman = float(spearmanr(y[te], pred[te]).correlation)
-    # best SINGLE source alone (its calibrated column = its standalone prediction) -> did fusion add value?
-    best_single_r2 = max(_r2(y[te], C[te, j]) for j in range(C.shape[1]))
-    fusion_uplift_r2 = test_r2 - best_single_r2
+    is_classification = r["fusion"]["method"] == "logistic"
+    if is_classification:
+        from scipy.special import expit
+        from sklearn.metrics import roc_auc_score
+
+        prob = expit(pred)                              # pred is the logit; sigmoid -> probability
+        yte, multi = y[te], len(np.unique(y[te])) > 1   # AUC needs both classes in the test fold
+        test_auc = float(roc_auc_score(yte, prob[te])) if multi else float("nan")
+        best_single_auc = (max(float(roc_auc_score(yte, C[te, j])) for j in range(C.shape[1]))
+                           if multi else float("nan"))
+        test_spearman = float(spearmanr(yte, prob[te]).correlation)
+        metrics = {"test_auc": test_auc, "test_spearman": test_spearman,
+                   "test_brier": float(np.mean((prob[te] - yte) ** 2)),
+                   "best_single_source_auc": best_single_auc, "fusion_uplift_auc": test_auc - best_single_auc,
+                   "n_test": float(len(te))}
+        link, Q, floor = "logistic", None, 0.0
+    else:
+        scale = _scale(C, unc_cfg)
+        floor = unc_cfg.get("scale_floor", 0.0)
+        Q = conformal.normalized_conformal_quantile(y[cal] - pred[cal], scale[cal],
+                                                    alpha=unc_cfg.get("alpha", 0.1), floor=floor)
+        test_r2 = _r2(y[te], pred[te])
+        test_spearman = float(spearmanr(y[te], pred[te]).correlation)
+        best_single_r2 = max(_r2(y[te], C[te, j]) for j in range(C.shape[1]))
+        metrics = {"test_mae": float(np.mean(np.abs(y[te] - pred[te]))), "test_r2": test_r2,
+                   "test_spearman": test_spearman, "best_single_source_r2": best_single_r2,
+                   "fusion_uplift_r2": test_r2 - best_single_r2,
+                   "test_conformal_coverage": conformal.empirical_coverage(
+                       y[te] - pred[te], scale[te], Q, floor=floor),
+                   "n_test": float(len(te))}
+        link = "identity"
 
     spec = FusionSpec(
         feature=feature, endpoint=endpoint,
@@ -180,16 +202,16 @@ def train(feature_key: str, *, root: Path) -> FusionSpec:
         sources=source_specs,
         fusion=Fusion(weights={srcs[i]["model"]: float(w[i]) for i in range(len(srcs))},
                       intercept=float(intercept), method=r["fusion"]["method"],
-                      regularization=r["fusion"].get("regularization")),
-        uncertainty=UncertaintySpec(method=unc_cfg.get("method", "none"), alpha=unc_cfg.get("alpha", 0.1),
-                                    quantile=Q, scale=unc_cfg.get("scale", "disagreement_std"),
-                                    scale_floor=floor, constant_width=unc_cfg.get("constant_width")),
+                      regularization=r["fusion"].get("regularization"), link=link),
+        uncertainty=UncertaintySpec(
+            method=("none" if is_classification else unc_cfg.get("method", "none")),
+            alpha=unc_cfg.get("alpha", 0.1), quantile=Q,
+            scale=unc_cfg.get("scale", "disagreement_std"),
+            scale_floor=floor, constant_width=unc_cfg.get("constant_width")),
         provenance=Provenance(
             dataset=tgt["dataset"], dataset_hash=_hash_df(data),
             n_train=int(n_tr), n_calib=int(n_cal),
-            metrics={"test_mae": test_mae, "test_r2": test_r2, "test_spearman": test_spearman,
-                     "best_single_source_r2": best_single_r2, "fusion_uplift_r2": fusion_uplift_r2,
-                     "test_conformal_coverage": test_cov, "n_test": float(len(te))},
+            metrics=metrics,
             git_sha=_git_sha(),
             notes=(f"unsubtractable contributors (not in exclusion index): {gaps}" if gaps else None),
         ),
@@ -207,10 +229,15 @@ def main(argv: list[str] | None = None) -> int:
     root = args.root or Path(os.environ.get("FTO_ADMET_ROOT", "."))
     spec = train(args.feature, root=root)
     m = spec.provenance.metrics
-    print(f"wrote {args.feature}.json | r2={m['test_r2']:.3f} spearman={m['test_spearman']:.3f} "
-          f"mae={m['test_mae']:.3f} best_single_r2={m['best_single_source_r2']:.3f} "
-          f"uplift={m['fusion_uplift_r2']:+.3f} coverage={m['test_conformal_coverage']:.3f} "
-          f"(n_test={int(m['n_test'])})")
+    if "test_auc" in m:  # classification
+        print(f"wrote {args.feature}.json | auc={m['test_auc']:.3f} spearman={m['test_spearman']:.3f} "
+              f"brier={m['test_brier']:.3f} best_single_auc={m['best_single_source_auc']:.3f} "
+              f"uplift_auc={m['fusion_uplift_auc']:+.3f} (n_test={int(m['n_test'])})")
+    else:  # regression
+        print(f"wrote {args.feature}.json | r2={m['test_r2']:.3f} spearman={m['test_spearman']:.3f} "
+              f"mae={m['test_mae']:.3f} best_single_r2={m['best_single_source_r2']:.3f} "
+              f"uplift={m['fusion_uplift_r2']:+.3f} coverage={m['test_conformal_coverage']:.3f} "
+              f"(n_test={int(m['n_test'])})")
     return 0
 
 
