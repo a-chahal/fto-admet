@@ -1,0 +1,56 @@
+{
+  "feature": "acute_ld50",
+  "endpoint": "toxicity",
+  "target": {
+    "name": "rat_oral_ld50",
+    "units": "neg_log_mol_per_kg",
+    "transform": "identity"
+  },
+  "sources": [
+    {
+      "model": "admet_ai",
+      "kind": "linear",
+      "params": [
+        0.7546977788884223,
+        0.7647676469743154
+      ],
+      "impute_value": 2.5722381706199213
+    }
+  ],
+  "fusion": {
+    "weights": {
+      "admet_ai": 1.0000000000000002
+    },
+    "intercept": -8.881784197001252e-16,
+    "method": "linear",
+    "regularization": 0.0,
+    "link": "identity"
+  },
+  "uncertainty": {
+    "method": "normalized_conformal",
+    "alpha": 0.1,
+    "quantile": 2.1274251747747224,
+    "scale": "constant",
+    "scale_floor": 0.0,
+    "constant_width": 0.5
+  },
+  "provenance": {
+    "dataset": "catmos",
+    "dataset_hash": "sha256:a6a75afebd7a9b99",
+    "exclusion_index_hash": null,
+    "n_train": 578,
+    "n_calib": 193,
+    "metrics": {
+      "test_mae": 0.4588920140552449,
+      "test_r2": 0.2983614063519201,
+      "test_spearman": 0.5019747209016612,
+      "best_single_source_r2": 0.2983614063519201,
+      "fusion_uplift_r2": 0.0,
+      "test_conformal_coverage": 0.8963730569948186,
+      "n_test": 193.0
+    },
+    "trained_at": null,
+    "git_sha": "98bccee0b79f79fb085a32ae1c309f6b44e2264c",
+    "notes": null
+  }
+}

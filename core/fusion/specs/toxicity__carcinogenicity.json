@@ -1,0 +1,55 @@
+{
+  "feature": "carcinogenicity",
+  "endpoint": "toxicity",
+  "target": {
+    "name": "carcinogen_binary",
+    "units": "probability",
+    "transform": "logit"
+  },
+  "sources": [
+    {
+      "model": "admet_ai",
+      "kind": "logistic",
+      "params": [
+        1.9691223220083771,
+        -0.007332574888787479
+      ],
+      "impute_value": 0.6614088817872367
+    }
+  ],
+  "fusion": {
+    "weights": {
+      "admet_ai": 3.1139234893776626
+    },
+    "intercept": -1.3782986803303474,
+    "method": "logistic",
+    "regularization": null,
+    "link": "logistic"
+  },
+  "uncertainty": {
+    "method": "none",
+    "alpha": 0.1,
+    "quantile": null,
+    "scale": "disagreement_std",
+    "scale_floor": 0.0,
+    "constant_width": null
+  },
+  "provenance": {
+    "dataset": "cpdb",
+    "dataset_hash": "sha256:960db692f0c2878f",
+    "exclusion_index_hash": null,
+    "n_train": 127,
+    "n_calib": 43,
+    "metrics": {
+      "test_auc": 0.505720823798627,
+      "test_spearman": 0.009866514468011569,
+      "test_brier": 0.25755655045467407,
+      "best_single_source_auc": 0.505720823798627,
+      "fusion_uplift_auc": 0.0,
+      "n_test": 42.0
+    },
+    "trained_at": null,
+    "git_sha": "98bccee0b79f79fb085a32ae1c309f6b44e2264c",
+    "notes": null
+  }
+}
