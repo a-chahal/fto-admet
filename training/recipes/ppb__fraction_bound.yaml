@@ -9,18 +9,19 @@ target:
   dataset: biogen_adme_2023
   loader_kwargs: {target: ppb}
   note: >
-    Biogen human PPB (LOG % unbound) converted to fraction_bound to match the aggregator's feature. opera was
-    dropped from TRAINING (screening cost; NNLS empirically zeroed its weight in the committed 3-source spec
-    - structurally redundant with admet_ai). It stays a live inference source in the aggregator. ochem_ppb is
-    kept as a training source but is an exclusion-index GAP (residual contamination flagged on the spec).
+    Biogen human PPB (LOG % unbound) converted to fraction_bound to match the aggregator's feature.
+    Single-source admet_ai. Both extra sources were tested and add nothing: opera was NNLS-zeroed in the
+    old 3-source spec, and adding ochem_ppb gave +0.002 R2 on the scaffold split (noise) while ochem is a
+    slow live API - so the operative model is single-source. Both stay live inference sources in the
+    aggregator (raw values on the card); they are just not in this trained spec. This is calibration + a
+    conformal interval, not fusion.
 
-sources:                                       # admet_ai + ochem_ppb (opera dropped from training)
+sources:                                       # single-source admet_ai (opera + ochem tested, no uplift)
   - {model: admet_ai,  calibration: linear}
-  - {model: ochem_ppb, calibration: linear}
 
-fusion: {method: nnls, regularization: 0.1}
-uncertainty: {method: normalized_conformal, alpha: 0.1, scale: disagreement_std, scale_floor: 0.02}
+fusion: {method: linear, regularization: 0.0}
+uncertainty: {method: normalized_conformal, alpha: 0.1, scale: constant, constant_width: 0.1}
 
 leakage:
-  exclude_models: [admet_ai, ochem_ppb]         # ochem is an index GAP -> flagged + stamped, not subtractable
-  note: subtract TDC PPBR_AZ by InChIKey; ochem_ppb residual contamination flagged on the spec. (opera dropped from training.)
+  exclude_models: [admet_ai]
+  note: subtract TDC PPBR_AZ by InChIKey. (opera + ochem dropped from training: tested, no uplift.)
