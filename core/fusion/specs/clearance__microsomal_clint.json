@@ -1,5 +1,5 @@
 {
-  "feature": "hepatocyte_clint",
+  "feature": "microsomal_clint",
   "endpoint": "clearance",
   "target": {
     "name": "hlm_microsomal_clint",
@@ -11,24 +11,24 @@
       "model": "admet_ai",
       "kind": "linear",
       "params": [
-        0.009240834935714948,
-        0.7776137232891281
+        0.012103141112908245,
+        0.8125134240048228
       ],
-      "impute_value": 1.3286937822440106
+      "impute_value": 1.328693782244011
     }
   ],
   "fusion": {
     "weights": {
-      "admet_ai": 1.0000000000000002
+      "admet_ai": 1.000000000000001
     },
-    "intercept": 0.0,
-    "method": "nnls",
-    "regularization": 0.1
+    "intercept": -1.3322676295501878e-15,
+    "method": "linear",
+    "regularization": 0.0
   },
   "uncertainty": {
     "method": "normalized_conformal",
     "alpha": 0.1,
-    "quantile": 2.8341396389365343,
+    "quantile": 2.9206003608440896,
     "scale": "constant",
     "scale_floor": 0.0,
     "constant_width": 0.3
@@ -40,12 +40,12 @@
     "n_train": 1795,
     "n_calib": 599,
     "metrics": {
-      "test_mae": 0.4394143265037872,
-      "test_r2": 0.18561073898596947,
-      "test_spearman": 0.42826451197490073,
-      "best_single_source_r2": 0.18561073898596947,
-      "fusion_uplift_r2": 0.0,
-      "test_conformal_coverage": 0.8996655518394648,
+      "test_mae": 0.4073504612147562,
+      "test_r2": 0.2845956980828511,
+      "test_spearman": 0.5439839166990468,
+      "best_single_source_r2": 0.28459569808285123,
+      "fusion_uplift_r2": -1.1102230246251565e-16,
+      "test_conformal_coverage": 0.9113712374581939,
       "n_test": 598.0
     },
     "trained_at": null,

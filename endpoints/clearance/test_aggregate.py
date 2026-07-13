@@ -107,8 +107,11 @@ def test_systemic_cl_absent_yields_null_score():
 
 # ------------------------------------------------------- microsomal_clint: single ADMET-AI read
 def test_microsomal_clint_is_single_admet_ai_read():
+    # trained single-source spec: the admet_ai microsome read is calibrated to Biogen HLM CLint (exact
+    # value tested in tests/test_fusion.py), so assert the source is gathered with its harmonized value and
+    # a calibrated score + conformal interval exist - not the raw 30.0 passthrough.
     f = _feature(aggregate({"m": [admet_ai(microsome=30.0)]}).molecules[0], MICROSOMAL_CLINT)
-    assert f.score == 30.0 and f.uncertainty is None and f.n_sources == 1
+    assert f.score is not None and f.uncertainty is not None and f.n_sources == 1
     assert f.unit == MICROSOMAL_CLINT_UNIT
     assert _src(f, "admet_ai").value == 30.0
 

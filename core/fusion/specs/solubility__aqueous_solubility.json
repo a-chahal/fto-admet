@@ -11,24 +11,24 @@
       "model": "admet_ai",
       "kind": "linear",
       "params": [
-        0.3089550352044457,
-        -3.1049405431315367
+        0.3229332304497297,
+        -3.06072108900155
       ],
-      "impute_value": -4.242187982603504
+      "impute_value": -4.232912901861783
     }
   ],
   "fusion": {
     "weights": {
-      "admet_ai": 0.9999999999999982
+      "admet_ai": 1.0000000000000022
     },
-    "intercept": -5.329070518200751e-15,
+    "intercept": 7.105427357601002e-15,
     "method": "linear",
     "regularization": 0.0
   },
   "uncertainty": {
     "method": "normalized_conformal",
     "alpha": 0.1,
-    "quantile": 1.7734998387173118,
+    "quantile": 1.7117584612029368,
     "scale": "constant",
     "scale_floor": 0.0,
     "constant_width": 0.5
@@ -38,18 +38,18 @@
     "dataset_hash": "sha256:0c8712e2840a1ed2",
     "exclusion_index_hash": null,
     "n_train": 1265,
-    "n_calib": 421,
+    "n_calib": 422,
     "metrics": {
-      "test_mae": 0.4391938189453605,
-      "test_r2": 0.34831979425563664,
-      "test_spearman": 0.6443449181666955,
-      "best_single_source_r2": 0.34831979425563664,
-      "fusion_uplift_r2": 0.0,
-      "test_conformal_coverage": 0.8841607565011821,
-      "n_test": 423.0
+      "test_mae": 0.4887152993849873,
+      "test_r2": 0.24412179321269523,
+      "test_spearman": 0.5300294103769123,
+      "best_single_source_r2": 0.24412179321269567,
+      "fusion_uplift_r2": -4.440892098500626e-16,
+      "test_conformal_coverage": 0.8459715639810427,
+      "n_test": 422.0
     },
     "trained_at": null,
-    "git_sha": "eed140426eab61d5970eee9ecff1f6f0439aefee",
+    "git_sha": "29ceaf71c5427e1c464e8e050a1ff0285a36dad0",
     "notes": null
   }
 }

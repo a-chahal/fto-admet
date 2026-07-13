@@ -11,24 +11,24 @@
       "model": "admet_ai",
       "kind": "linear",
       "params": [
-        1.1309388040687984,
-        -0.15508844988874548
+        1.1509327716446125,
+        -0.19274084945117578
       ],
-      "impute_value": 0.7770511436635233
+      "impute_value": 0.725005976963318
     }
   ],
   "fusion": {
     "weights": {
-      "admet_ai": 1.0000000000000007
+      "admet_ai": 1.0000000000000002
     },
-    "intercept": 0.0,
+    "intercept": -2.220446049250313e-16,
     "method": "linear",
     "regularization": 0.0
   },
   "uncertainty": {
     "method": "normalized_conformal",
     "alpha": 0.1,
-    "quantile": 2.2317640683271653,
+    "quantile": 2.9112283128020953,
     "scale": "constant",
     "scale_floor": 0.0,
     "constant_width": 0.1
@@ -40,16 +40,16 @@
     "n_train": 105,
     "n_calib": 35,
     "metrics": {
-      "test_mae": 0.1189399316454933,
-      "test_r2": 0.6637957584952965,
-      "test_spearman": 0.873870721381039,
-      "best_single_source_r2": 0.6637957584952969,
-      "fusion_uplift_r2": -4.440892098500626e-16,
-      "test_conformal_coverage": 0.8285714285714286,
+      "test_mae": 0.07981882962974336,
+      "test_r2": 0.7554170848288895,
+      "test_spearman": 0.7305322128851541,
+      "best_single_source_r2": 0.7554170848288895,
+      "fusion_uplift_r2": 0.0,
+      "test_conformal_coverage": 1.0,
       "n_test": 35.0
     },
     "trained_at": null,
-    "git_sha": "a8c752d62ff00cf70968c2dc7b00dee739be0f47",
+    "git_sha": "29ceaf71c5427e1c464e8e050a1ff0285a36dad0",
     "notes": null
   }
 }
