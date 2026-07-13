@@ -8,6 +8,7 @@ target:
   transform: logit               # binary target; the fit is logistic (classification path)
   dataset: cpdb
   label_column: label
+  max_n: 5000                    # cap the screen (post-leakage); test set stays large enough for a tight AUC CI
   note: >
     Binary classification head: calibrate admet_ai's carcinogenicity probability to the measured cpdb label.
     fusion.method logistic -> AUC / Spearman / Brier + a logistic link (probability output), no conformal

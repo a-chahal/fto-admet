@@ -114,6 +114,13 @@ def train(feature_key: str, *, root: Path) -> FusionSpec:
     if len(data) < 100:
         raise RuntimeError(f"{feature_key}: only {len(data)} clean molecules after subtraction; too few.")
 
+    # Optional cap: a huge clean set (e.g. logD's 18k) is screening cost with little added value - the fit
+    # is ~5 params and a few-thousand test set already gives a tight metric CI. A seeded subsample keeps the
+    # result solid while cutting the screen. Set target.max_n in the recipe; omitted -> use everything.
+    max_n = tgt.get("max_n")
+    if max_n and len(data) > int(max_n):
+        data = data.sample(n=int(max_n), random_state=0).reset_index(drop=True)
+
     # 4. dispatch the contributing models -> harmonized feature matrix, joined to the label.
     X = features.load_or_build_features(
         data, endpoint=endpoint, feature=feature, models=models,

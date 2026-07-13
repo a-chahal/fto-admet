@@ -8,6 +8,7 @@ target:
   transform: identity
   dataset: catmos
   label_column: ld50
+  max_n: 5000                    # cap the screen (post-leakage); test set stays large enough for a tight CI
   note: >
     EPA/NICEATM CATMoS rat oral LD50 (Mansouri 2019), the superset of the ADMET-AI/TDC Zhu-2009 set. This is
     the one toxicity head that is genuine REGRESSION (a continuous magnitude), so the regression trainer's
