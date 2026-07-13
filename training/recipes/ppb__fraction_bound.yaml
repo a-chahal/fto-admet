@@ -24,4 +24,4 @@ uncertainty: {method: normalized_conformal, alpha: 0.1, scale: constant, constan
 
 leakage:
   exclude_models: [admet_ai]
-  note: subtract TDC PPBR_AZ by InChIKey. (opera + ochem dropped from training: tested, no uplift.)
+  note: subtract TDC PPBR_AZ by InChIKey. (opera + ochem dropped from training - tested, no uplift.)
