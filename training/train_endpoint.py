@@ -32,6 +32,7 @@ from core.fusion.spec import (
 from training import conformal, features, split
 from training import datasets as ds
 from training.datasets import biogen  # noqa: F401  (import registers the biogen loader)
+from training.datasets import chembl_herg  # noqa: F401  (registers the temporal hERG loader)
 from training import fit as fitmod
 
 _REPO = Path(__file__).resolve().parent.parent
