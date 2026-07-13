@@ -52,7 +52,14 @@ def _num(value: Any) -> float | None:
 
 
 def _calibrate(cal: SourceCalibration, value: Any) -> float | None:
-    """Map one source's harmonized value onto the target scale via its calibration ``gᵢ``."""
+    """Map one source's harmonized value onto the target scale via its calibration ``gᵢ``.
+
+    A boolean is coerced to a 0/1 indicator here (unlike the equal-weight ensemble, which rejects bools):
+    a trained calibration of a binary flag - e.g. BOILED-Egg's in-yolk BBB call - is a meaningful 0/1
+    feature, and the trainer already fits it as 0/1, so inference must read it the same way.
+    """
+    if isinstance(value, bool):
+        value = float(value)
     x = _num(value)
     if x is None:
         return None

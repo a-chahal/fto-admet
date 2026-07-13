@@ -91,6 +91,16 @@ def test_no_matching_source_yields_none():
     assert apply_spec(spec, [_src("other", 1.0)]) == (None, None)
 
 
+def test_boolean_source_is_calibrated_as_zero_one():
+    # A trained calibration treats a boolean flag as a 0/1 indicator (the equal-weight ensemble rejects
+    # bools, but a fit calibration of e.g. BOILED-Egg's in-yolk BBB call is a meaningful 0/1 feature).
+    spec = _spec([SourceCalibration(model="boiled_egg", kind="linear", params=[2.0, 1.0])],
+                 weights={"boiled_egg": 1.0})
+    on, _ = apply_spec(spec, [Source(model="boiled_egg", value=True)])
+    off, _ = apply_spec(spec, [Source(model="boiled_egg", value=False)])
+    assert math.isclose(on, 2.0 * 1.0 + 1.0) and math.isclose(off, 2.0 * 0.0 + 1.0)  # True->1, False->0
+
+
 def test_source_with_no_harmonized_value_calibrates_its_raw():
     # A source the aggregator left off the common scale (value=None) but which predicted a native raw
     # (e.g. CardioGenAI's pIC50 on the P(block) hERG feature) is calibrated from its raw, not dropped.
