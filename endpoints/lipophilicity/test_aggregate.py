@@ -89,15 +89,14 @@ def test_logp_lens_without_pka_is_excluded_but_raw_kept():
     assert f.score is None and f.n_sources == 1   # the read is carried (raw visible), just not scored
 
 
-# -------------------------------------------------------------------------- score = mean, uncertainty = std
-def test_score_is_mean_and_uncertainty_is_std_over_logd():
+# ------------------------------------------------------------- trained spec: sources gathered, score exists
+def test_lenses_gathered_and_scored_via_trained_spec():
+    # The trained logD spec calibrates admet_ai + crippen + swissadme (opera was dropped from the spec, so
+    # it is carried as a source but not weighted). Exact fused value is pinned in tests/test_fusion.py; here
+    # assert both reads are gathered on the logD axis and a calibrated score is produced.
     f = _feature(aggregate({"m": [opera(1.17), admet_ai(0.82)]}).molecules[0])
-    vals = [1.17, 0.82]
-    mean = sum(vals) / 2
-    var = sum((x - mean) ** 2 for x in vals) / 2
     assert f.n_sources == 2
-    assert math.isclose(f.score, mean)
-    assert math.isclose(f.uncertainty, math.sqrt(var))
+    assert f.score is not None
 
 
 def test_convergent_lenses_lower_uncertainty_than_divergent():
@@ -107,9 +106,10 @@ def test_convergent_lenses_lower_uncertainty_than_divergent():
 
 
 # -------------------------------------------------------------------------- subsets / fallbacks
-def test_single_source_has_score_but_no_uncertainty():
+def test_single_source_yields_calibrated_score():
+    # trained spec: the single admet_ai read is calibrated (not the raw 0.82 passthrough); n_sources still 1.
     f = _feature(aggregate({"m": [admet_ai(0.82)]}).molecules[0])
-    assert f.score == 0.82 and f.uncertainty is None and f.n_sources == 1
+    assert f.score is not None and f.n_sources == 1
 
 
 def test_no_lipophilicity_source_yields_null_score():

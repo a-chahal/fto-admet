@@ -14,7 +14,8 @@
         1.072095025024493,
         4.532048928775232
       ],
-      "impute_value": 5.419017068232242
+      "impute_value": 5.419017068232242,
+      "from_raw": false
     },
     {
       "model": "bayesherg",
@@ -23,7 +24,8 @@
         0.7222738474495624,
         4.827310872993528
       ],
-      "impute_value": 5.419017068232242
+      "impute_value": 5.419017068232242,
+      "from_raw": false
     },
     {
       "model": "cardiotox_net",
@@ -32,7 +34,8 @@
         0.7052891383899702,
         5.007598083102317
       ],
-      "impute_value": 5.419017068232241
+      "impute_value": 5.419017068232241,
+      "from_raw": false
     },
     {
       "model": "cardiogenai",
@@ -41,7 +44,8 @@
         0.08159444792407042,
         4.819060810784403
       ],
-      "impute_value": 5.419017068232247
+      "impute_value": 5.419017068232247,
+      "from_raw": true
     }
   ],
   "fusion": {
@@ -53,7 +57,8 @@
     },
     "intercept": -3.7282648750128597,
     "method": "ridge",
-    "regularization": 0.5
+    "regularization": 0.5,
+    "link": "identity"
   },
   "uncertainty": {
     "method": "normalized_conformal",
@@ -79,7 +84,7 @@
       "n_test": 40.0
     },
     "trained_at": null,
-    "git_sha": "e5e18d7fd05799dbfc7cc68c8bc76999f93b89f4",
+    "git_sha": "26f3f1400453142e1448eb1a2f9b79ad0150dd20",
     "notes": null
   }
 }

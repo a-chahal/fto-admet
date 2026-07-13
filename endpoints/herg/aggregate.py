@@ -33,6 +33,7 @@ from core.aggregate import (
     ensemble,
     normalize_molecules,
 )
+from core.fusion import fuse
 from core.models import Endpoint, ModelName
 from core.schemas import OutputRecord
 
@@ -49,7 +50,7 @@ HERG_BLOCK = "hERG_block"
 NAV_BLOCK = "nav1.5_block"
 CAV_BLOCK = "cav1.2_block"
 
-HERG_UNIT = "P(hERG block) [0,1] (up = more block, worse)"
+HERG_UNIT = "hERG pIC50 (up = more block, worse); trained 4-arch fusion. Go/no-go THRESHOLD deferred (t52)"
 NAV_UNIT = "pIC50 (up = more block)"
 CAV_UNIT = "pIC50 (up = more block)"
 PIC50_UNIT = "pIC50"
@@ -94,9 +95,10 @@ def _herg_block_feature(records: Sequence[OutputRecord]) -> Feature:
             if pic50 is not None:
                 sources.append(Source(
                     model="cardiogenai", value=None, raw=pic50, raw_unit=PIC50_UNIT,
-                    note="pIC50; placeholder pIC50->P(block) DEFERRED (F-1), excluded from score",
+                    note="native pIC50; scored via the trained fusion from raw (the feature is now on the "
+                         "pIC50 scale, so no pIC50->P(block) map is needed - F-1 is resolved by scale)",
                 ))
-    score, uncertainty = ensemble([s.value for s in sources], [s.weight for s in sources])
+    score, uncertainty = fuse(Endpoint.herg, HERG_BLOCK, sources)   # trained 4-arch spec -> calibrated pIC50
     return Feature(feature=HERG_BLOCK, score=score, uncertainty=uncertainty, unit=HERG_UNIT,
                    n_sources=len(sources), sources=sources)
 

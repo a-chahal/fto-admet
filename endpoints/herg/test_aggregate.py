@@ -74,14 +74,13 @@ def test_bayesherg_note_carries_alea_epis():
     assert "alea=0.11" in note and "epis=0.07" in note
 
 
-def test_score_is_mean_and_uncertainty_is_std_over_probabilities():
+def test_probabilities_gathered_and_scored_via_trained_spec():
+    # The trained 4-arch spec calibrates the three P(block) probabilities onto the pIC50 target (exact
+    # fused value pinned in tests/test_fusion.py). Assert the reads are gathered and a calibrated pIC50
+    # score + interval exist - not the old equal-weight probability mean.
     f = _feat(aggregate({"m": [admet_ai(0.4), bayesherg(0.2), cardiotox(0.6)]}).molecules[0], HERG_BLOCK)
-    vals = [0.4, 0.2, 0.6]
-    mean = sum(vals) / 3
-    var = sum((x - mean) ** 2 for x in vals) / 3
     assert f.n_sources == 3
-    assert abs(f.score - mean) < 1e-9
-    assert abs(f.uncertainty - math.sqrt(var)) < 1e-9
+    assert f.score is not None and f.uncertainty is not None
 
 
 def test_convergent_sources_have_low_uncertainty_divergent_high():
@@ -90,22 +89,21 @@ def test_convergent_sources_have_low_uncertainty_divergent_high():
     assert tight.uncertainty < wide.uncertainty
 
 
-# -------------------------------------------------------------------------- cardiogenai carried, not scored
-def test_cardiogenai_pic50_is_carried_but_excluded_from_score():
+# ------------------------------------------------------ cardiogenai pIC50 now scored via from_raw (F-1 resolved)
+def test_cardiogenai_pic50_is_scored_from_raw():
     recs = [admet_ai(0.4), bayesherg(0.2), cardiotox(0.6), cardiogenai(herg=7.0)]
     f = _feat(aggregate({"m": recs}).molecules[0], HERG_BLOCK)
     cg = _src(f, "cardiogenai")
-    assert cg.value is None                     # NOT scored: pIC50 -> P(block) is DEFERRED (F-1)
+    assert cg.value is None                          # still value=None on the axis; its pIC50 lives in raw
     assert cg.raw == 7.0 and cg.raw_unit == "pIC50"
-    assert f.n_sources == 4                      # carried as a source
-    # score is still the mean of the THREE real probabilities, cardiogenai excluded
-    assert abs(f.score - (0.4 + 0.2 + 0.6) / 3) < 1e-9
+    assert f.n_sources == 4
+    assert f.score is not None                       # all four architectures contribute (cardiogenai via from_raw)
 
 
-def test_deferred_marker_present_in_cardiogenai_note():
+def test_cardiogenai_alone_is_scored_from_its_raw_pic50():
     f = _feat(aggregate({"m": [cardiogenai(herg=6.0)]}).molecules[0], HERG_BLOCK)
-    assert "DEFERRED" in _src(f, "cardiogenai").note
-    assert f.score is None and f.n_sources == 1  # only a carried value -> no numeric score
+    assert f.n_sources == 1 and f.score is not None  # scored from raw pIC50 (others imputed), no longer None
+    assert "pIC50" in _src(f, "cardiogenai").note
 
 
 # -------------------------------------------------------------------------- nav1.5 / cav1.2 separate entities
@@ -122,13 +120,13 @@ def test_channels_never_fold_into_herg_block():
     herg = _feat(mol, HERG_BLOCK)
     # the NaV/CaV pIC50s are their own features, never sources of hERG_block
     assert [s.model for s in herg.sources] == ["admet_ai", "cardiogenai"]
-    assert herg.score == 0.4  # only admet_ai's probability
+    assert herg.score is not None  # calibrated fusion of admet_ai P(block) + cardiogenai pIC50
 
 
 # -------------------------------------------------------------------------- subsets / graceful fallbacks
-def test_single_probability_source_has_score_but_no_uncertainty():
+def test_single_probability_source_is_calibrated():
     f = _feat(aggregate({"m": [admet_ai(0.4)]}).molecules[0], HERG_BLOCK)
-    assert f.score == 0.4 and f.uncertainty is None and f.n_sources == 1
+    assert f.score is not None and f.n_sources == 1   # calibrated to pIC50 (not the raw 0.4 probability)
 
 
 def test_no_herg_source_yields_null_score_no_crash():
@@ -161,14 +159,15 @@ def test_endpoint_identity_and_uniform_shape():
 def test_multiple_molecules_independent():
     res = aggregate({"safe": [admet_ai(0.05)], "risky": [admet_ai(0.95)]})
     by = {m.mol_id: _feat(m, HERG_BLOCK).score for m in res.molecules}
-    assert by == {"safe": 0.05, "risky": 0.95}
+    assert by["safe"] is not None and by["risky"] is not None
+    assert by["risky"] > by["safe"]   # monotone calibration: higher P(block) -> higher pIC50
 
 
 def test_input_shapes_normalize_the_same():
     recs = [admet_ai(0.4)]
-    as_map = aggregate({"FTO-43": recs}).molecules[0]
-    as_pairs = aggregate([("FTO-43", recs)]).molecules[0]
-    as_dicts = aggregate([{"mol_id": "FTO-43", "records": recs}]).molecules[0]
-    for m in (as_map, as_pairs, as_dicts):
-        assert m.mol_id == "FTO-43"
-        assert _feat(m, HERG_BLOCK).score == 0.4
+    mols = [aggregate({"FTO-43": recs}).molecules[0],
+            aggregate([("FTO-43", recs)]).molecules[0],
+            aggregate([{"mol_id": "FTO-43", "records": recs}]).molecules[0]]
+    scores = {_feat(m, HERG_BLOCK).score for m in mols}
+    assert all(m.mol_id == "FTO-43" for m in mols)
+    assert len(scores) == 1 and scores.pop() is not None   # same calibrated score across all input shapes

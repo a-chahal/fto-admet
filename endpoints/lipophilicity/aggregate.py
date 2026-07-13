@@ -32,9 +32,9 @@ from core.aggregate import (
     Feature,
     MoleculeVerdict,
     Source,
-    ensemble,
     normalize_molecules,
 )
+from core.fusion import fuse
 from core.models import Endpoint, ModelName
 from core.schemas import OutputRecord
 
@@ -145,7 +145,7 @@ def _molecule(mol_id: str, records: Sequence[Any], pka: float | None, pka_kind: 
     recs = [_as_output_record(r) for r in records]
     pka_used, kind = _resolve_pka(recs, pka, pka_kind)
     sources = _sources(recs, pka_used, kind, ph)
-    score, uncertainty = ensemble([s.value for s in sources], [s.weight for s in sources])
+    score, uncertainty = fuse(Endpoint.lipophilicity, FEATURE, sources)   # trained spec if present, else equal-weight
     feature = Feature(feature=FEATURE, score=score, uncertainty=uncertainty, unit=UNIT,
                       n_sources=len(sources), sources=sources)
     return MoleculeVerdict(endpoint=Endpoint.lipophilicity, mol_id=mol_id, features=[feature])

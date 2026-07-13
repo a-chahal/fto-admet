@@ -48,14 +48,14 @@ def _src(feature, model):
 
 
 # -------------------------------------------------------------------------- penetration: 3 reads, no score
-def test_penetration_carries_three_native_reads_with_deferred_score():
+def test_penetration_scores_the_trained_rule_fusion():
     recs = [bbb_score(5.13), admet_ai(bbb=0.95), boiled_egg(True)]
     f = _feat(aggregate({"m": recs}).molecules[0], PENETRATION)
-    assert f.score is None and f.uncertainty is None      # mixed scales -> deferred
+    assert f.score is not None                            # trained rule fusion -> calibrated log Kp,uu (was None)
     assert f.n_sources == 3
     assert _src(f, "bbb_score").value == 5.13
-    assert _src(f, "admet_ai").value == 0.95
-    assert _src(f, "boiled_egg").value is True            # boolean read carried natively
+    assert _src(f, "admet_ai").value == 0.95              # carried (contaminated on the Kp,uu set, not in the spec)
+    assert _src(f, "boiled_egg").value is True            # boolean read carried natively, scored as 0/1
 
 
 # -------------------------------------------------------------------------- cns druglikeness is separate

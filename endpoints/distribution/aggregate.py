@@ -87,8 +87,13 @@ def _penetration_feature(records: Sequence[OutputRecord]) -> Feature:
             if isinstance(b, bool):
                 sources.append(Source(model="boiled_egg", value=b,
                                       note="in-yolk point-in-polygon, boolean (True = penetrant)"))
-    # Mixed scales, one entity: no clean common axis -> score DEFERRED until calibration (F-4 / logBB target).
-    return Feature(feature=PENETRATION, score=None, uncertainty=None, unit=None,
+    # Mixed scales (0-6 rule + prob + 0/1 rule): the trained spec's per-source calibration is what makes them
+    # commensurable, turning the once-deferred score into a real calibrated log Kp,uu (admet_ai is contaminated
+    # on this set and not in the spec, so it is carried but unweighted). Falls back to None-yielding equal-weight
+    # only if the spec is absent (mixed scales have no meaningful equal-weight mean).
+    score, uncertainty = fuse(Endpoint.distribution, PENETRATION, sources)
+    return Feature(feature=PENETRATION, score=score, uncertainty=uncertainty,
+                   unit="log10 Kp,uu,brain (up = more brain-penetrant); trained rule fusion",
                    n_sources=len(sources), sources=sources)
 
 
