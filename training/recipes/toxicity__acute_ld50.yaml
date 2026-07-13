@@ -1,0 +1,25 @@
+feature: acute_ld50
+endpoint: toxicity
+priority: medium
+
+target:
+  name: rat_oral_ld50
+  units: neg_log_mol_per_kg     # -log10(mol/kg); up = more acutely toxic (matches ADMET-AI LD50_Zhu direction)
+  transform: identity
+  dataset: catmos
+  label_column: ld50
+  note: >
+    EPA/NICEATM CATMoS rat oral LD50 (Mansouri 2019), the superset of the ADMET-AI/TDC Zhu-2009 set. This is
+    the one toxicity head that is genuine REGRESSION (a continuous magnitude), so the regression trainer's
+    R2 / Spearman / conformal interval are all meaningful here. Single-source: calibrates admet_ai's LD50_Zhu
+    head to the measured CATMoS LD50. Validation + a calibrated interval, not fusion.
+
+sources:
+  - {model: admet_ai, calibration: linear}
+
+fusion: {method: linear, regularization: 0.0}
+uncertainty: {method: normalized_conformal, alpha: 0.1, scale: constant, constant_width: 0.5}
+
+leakage:
+  exclude_models: [admet_ai]
+  note: subtract TDC LD50_Zhu by InChIKey (CATMoS is its EPA superset).
