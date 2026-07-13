@@ -23,7 +23,7 @@ sources:
   - {model: admet_ai,       calibration: linear}
   - {model: bayesherg,      calibration: linear}
   - {model: cardiotox_net,  calibration: linear}
-  - {model: cardiogenai,    calibration: linear}   # native pIC50 read from raw (F-1 P(block) map deferred)
+  - {model: cardiogenai,    calibration: linear, from_raw: true}   # native pIC50 read from raw (aggregator carries value=None on the P(block) scale, F-1)
 
 fusion: {method: ridge, regularization: 0.5}
 uncertainty:

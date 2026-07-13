@@ -116,13 +116,25 @@ def test_boolean_source_is_calibrated_as_zero_one():
     assert math.isclose(on, 2.0 * 1.0 + 1.0) and math.isclose(off, 2.0 * 0.0 + 1.0)  # True->1, False->0
 
 
-def test_source_with_no_harmonized_value_calibrates_its_raw():
-    # A source the aggregator left off the common scale (value=None) but which predicted a native raw
-    # (e.g. CardioGenAI's pIC50 on the P(block) hERG feature) is calibrated from its raw, not dropped.
-    spec = _spec([SourceCalibration(model="cardiogenai", kind="linear", params=[1.0, 0.5])],
+def test_from_raw_source_calibrates_its_raw_not_value():
+    # A from_raw source (e.g. CardioGenAI's pIC50 on the P(block) hERG feature) is calibrated from its
+    # native raw, even though the aggregator carries value=None on the common scale.
+    spec = _spec([SourceCalibration(model="cardiogenai", kind="linear", params=[1.0, 0.5], from_raw=True)],
                  weights={"cardiogenai": 1.0})
     score, _ = apply_spec(spec, [Source(model="cardiogenai", value=None, raw=6.0, raw_unit="pIC50")])
     assert math.isclose(score, 1.0 * 6.0 + 0.5)   # calibrated from raw=6.0, not imputed/dropped
+
+
+def test_non_from_raw_source_that_failed_to_harmonize_is_dropped_not_read_from_raw():
+    # A default (from_raw=False) source whose value is None because harmonization FAILED (e.g. logD's
+    # crippen with no pKa) must NOT be read from its raw (a different scale) - it is dropped/imputed.
+    spec = _spec([SourceCalibration(model="a", kind="linear", params=[1.0, 0.0], impute_value=2.0),
+                  SourceCalibration(model="crippen", kind="linear", params=[1.0, 0.0])],
+                 weights={"a": 1.0, "crippen": 1.0})
+    # 'a' present (=3.0); crippen has value=None but a raw on a foreign scale -> dropped, not read from raw
+    score, _ = apply_spec(spec, [Source(model="a", value=3.0),
+                                 Source(model="crippen", value=None, raw=99.0)])
+    assert math.isclose(score, 1.0 * 3.0)   # only 'a'; crippen dropped (raw=99 NOT used)
 
 
 # -------------------------------------------------------------------------- conformal half-width

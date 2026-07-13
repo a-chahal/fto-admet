@@ -154,7 +154,8 @@ def train(feature_key: str, *, root: Path) -> FusionSpec:
         gx = fitmod._apply_calibration(x, s["calibration"], params)
         calibrated_cols.append(gx)
         source_specs.append(SourceCalibration(model=s["model"], kind=s["calibration"], params=params,
-                                              impute_value=float(np.mean(gx[tr]))))
+                                              impute_value=float(np.mean(gx[tr])),
+                                              from_raw=bool(s.get("from_raw", False))))
     C = np.column_stack(calibrated_cols)
     reg = r["fusion"].get("regularization")
     weights, intercept = fitmod.fit_fusion(C[tr], y[tr], method=r["fusion"]["method"],

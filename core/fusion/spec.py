@@ -43,6 +43,9 @@ class SourceCalibration(BaseModel):
     kind: Literal["identity", "linear", "logistic"] = "identity"
     params: list[float] = Field(default_factory=list)
     impute_value: float | None = None
+    from_raw: bool = False   # calibrate the source's native ``raw`` (not its harmonized ``value``) - e.g. a
+    #                          model the aggregator leaves off the common scale (CardioGenAI's pIC50). Default
+    #                          False: use the harmonized ``value`` and drop the source when it is absent.
 
 
 class Fusion(BaseModel):

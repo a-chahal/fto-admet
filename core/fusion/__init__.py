@@ -108,10 +108,11 @@ def apply_spec(spec: FusionSpec, sources: Sequence[Source]) -> tuple[float | Non
         cal = next((c for c in spec.sources if c.model == s.model), None)
         if cal is None:
             continue
-        # Mirror the trainer (training/features.py): calibrate the harmonised value, or the native ``raw``
-        # when the aggregator left this source off the common scale (value=None) - so a spec fit on a
-        # source's raw prediction (e.g. CardioGenAI pIC50) applies that same raw prediction at inference.
-        cv = _calibrate(cal, s.value if s.value is not None else s.raw)
+        # Calibrate the source's native ``raw`` when the spec fit it from raw (from_raw: a source the
+        # aggregator leaves off the common scale, e.g. CardioGenAI's pIC50), else its harmonized ``value``.
+        # A ``value`` source that is absent (None) calibrates to None below and is dropped/imputed - so a
+        # source that merely failed to harmonize (e.g. logD's crippen with no pKa) is NOT read from raw.
+        cv = _calibrate(cal, s.raw if cal.from_raw else s.value)
         if cv is not None:
             present[s.model] = cv
 
