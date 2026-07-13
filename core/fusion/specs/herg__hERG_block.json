@@ -1,0 +1,85 @@
+{
+  "feature": "hERG_block",
+  "endpoint": "herg",
+  "target": {
+    "name": "hERG_pIC50",
+    "units": "pIC50",
+    "transform": "identity"
+  },
+  "sources": [
+    {
+      "model": "admet_ai",
+      "kind": "linear",
+      "params": [
+        1.072095025024493,
+        4.532048928775232
+      ],
+      "impute_value": 5.419017068232242
+    },
+    {
+      "model": "bayesherg",
+      "kind": "linear",
+      "params": [
+        0.7222738474495624,
+        4.827310872993528
+      ],
+      "impute_value": 5.419017068232242
+    },
+    {
+      "model": "cardiotox_net",
+      "kind": "linear",
+      "params": [
+        0.7052891383899702,
+        5.007598083102317
+      ],
+      "impute_value": 5.419017068232241
+    },
+    {
+      "model": "cardiogenai",
+      "kind": "linear",
+      "params": [
+        0.08159444792407042,
+        4.819060810784403
+      ],
+      "impute_value": 5.419017068232247
+    }
+  ],
+  "fusion": {
+    "weights": {
+      "admet_ai": 0.5781655812852685,
+      "bayesherg": 0.2256753643632521,
+      "cardiotox_net": 0.5075068329741419,
+      "cardiogenai": 0.3766487395778369
+    },
+    "intercept": -3.7282648750128597,
+    "method": "ridge",
+    "regularization": 0.5
+  },
+  "uncertainty": {
+    "method": "normalized_conformal",
+    "alpha": 0.1,
+    "quantile": 7.510178500902267,
+    "scale": "disagreement_std",
+    "scale_floor": 0.1,
+    "constant_width": null
+  },
+  "provenance": {
+    "dataset": "chembl_temporal_herg",
+    "dataset_hash": "sha256:cd71d6ecdf0ed1c4",
+    "exclusion_index_hash": null,
+    "n_train": 120,
+    "n_calib": 40,
+    "metrics": {
+      "test_mae": 0.3362992463312299,
+      "test_r2": 0.43314853650551677,
+      "test_spearman": 0.7151100131800486,
+      "best_single_source_r2": 0.37108689043593157,
+      "fusion_uplift_r2": 0.0620616460695852,
+      "test_conformal_coverage": 0.95,
+      "n_test": 40.0
+    },
+    "trained_at": null,
+    "git_sha": "e5e18d7fd05799dbfc7cc68c8bc76999f93b89f4",
+    "notes": null
+  }
+}

@@ -13,24 +13,24 @@ target:
     (~few hundred, mostly rat microdialysis) after InChIKey de-dup across compilations. Use logBB only as
     a PRETRAIN/anchor, then fine-tune on Kp,uu. This is the highest-value, lowest-data endpoint.
 
-# The mixed-scale feature: BBB_Score (0-6 rule), BBB_Martins (ML prob), boiled_egg (0/1 in-yolk rule), all
-# calibrated onto log Kp,uu. Calibration is what makes three incompatible scales commensurable and flips the
-# aggregator score from None to real. boiled_egg's boolean is a 0/1 indicator: the trainer fits it as 0/1 and
-# core.fusion._calibrate now coerces bool -> 0/1 at inference too (consistent), so it is a real fit source.
+# Leakage-free mixed-scale fusion of the two DETERMINISTIC BBB rules, calibrated onto log Kp,uu:
+#   BBB_Score (0-6) + boiled_egg (0/1 in-yolk call). Rules have no training set, so nothing to contaminate -
+#   all 157 Kp,uu compounds are usable, and calibration makes the two scales commensurable (score None -> real).
+# admet_ai's BBB_Martins head is DROPPED from the fit: 137 of the 157 public Kp,uu compounds are in its
+# BBB_Martins training set (only 20 survive InChIKey subtraction, below the floor), so it cannot be
+# evaluated leakage-free here. It stays a live inference source (raw prob on the card); we just cannot put a
+# trustworthy trained weight on it from this contaminated set. This is the honest bbb baseline: how well the
+# physics-based BBB rules, fused + calibrated, rank measured brain Kp,uu.
 sources:
-  - {model: admet_ai,   calibration: linear}     # BBB_Martins probability
-  - {model: bbb_score,  calibration: linear}     # 0-6 desirability
+  - {model: bbb_score,  calibration: linear}     # 0-6 desirability rule
   - {model: boiled_egg, calibration: linear}     # boolean in-yolk BBB call, used as 0/1
 
-fusion: {method: ridge, regularization: 1.0}     # heavier regularization (small data, correlated sources)
+fusion: {method: ridge, regularization: 1.0}     # heavier regularization (small data, correlated rules)
 uncertainty: {method: normalized_conformal, alpha: 0.1, scale: disagreement_std, scale_floor: 0.1}
 
 leakage:
-  exclude_models: [admet_ai]                     # bbb_score/boiled_egg are rules (subtract their derivation sets too)
+  exclude_models: []                             # both sources are deterministic rules: no training set to subtract
   note: >
-    subtract TDC BBB_Martins + BBB Score 990-drug set + BOILED-Egg BBB derivation set by InChIKey. logBB
-    pretraining set (B3DB) must ALSO be subtracted from the Kp,uu evaluation.
-  pretrain:
-    dataset: b3db_logbb
-    target: logBB
-    note: anchor only; final target + evaluation are Kp,uu.
+    No subtraction: BBB_Score + boiled_egg are fixed geometric/physchem rules with no fitted parameters, so
+    a held-out molecule's prediction does not depend on any training molecule. admet_ai's BBB head, by
+    contrast, IS contaminated on this marketed-drug set (137/157) and is excluded above.
