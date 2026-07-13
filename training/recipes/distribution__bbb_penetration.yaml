@@ -13,12 +13,15 @@ target:
     (~few hundred, mostly rat microdialysis) after InChIKey de-dup across compilations. Use logBB only as
     a PRETRAIN/anchor, then fine-tune on Kp,uu. This is the highest-value, lowest-data endpoint.
 
-# This is the mixed-scale feature: sources are BBB_Score (0-6), BBB_Martins (prob), boiled_egg (bool).
-# Calibration is what makes them commensurable -> the score flips from None to real once trained.
+# The mixed-scale feature: BBB_Score (0-6 rule) + BBB_Martins (ML prob), calibrated onto log Kp,uu - a
+# genuine rule-vs-ML fusion, and calibration is what flips the aggregator score from None to real.
+# boiled_egg (a boolean point-in-polygon rule) is DROPPED from the fit for now: as a bool it is coerced to
+# 0/1 in training but rejected by the numeric guard at inference (a flag is not a measurement), so it would
+# be silently imputed - an inconsistency not worth it for a single binary rule that mostly duplicates the
+# BBB_Score physchem signal. Add it back once the calibration path coerces bool -> 0/1 consistently.
 sources:
   - {model: admet_ai,   calibration: linear}     # BBB_Martins probability
   - {model: bbb_score,  calibration: linear}     # 0-6 desirability
-  - {model: boiled_egg, calibration: linear}     # boolean 0/1
 
 fusion: {method: ridge, regularization: 1.0}     # heavier regularization (small data, correlated sources)
 uncertainty: {method: normalized_conformal, alpha: 0.1, scale: disagreement_std, scale_floor: 0.1}
