@@ -12,12 +12,18 @@ target:
     hERG is the most-contaminated endpoint. Cut a ChEMBL v34/v35 manual patch-clamp slice
     (assay_type=B, IC50, standard_units=nM), temporal after training cutoffs, then subtract ALL unions.
 
-# admet_ai/bayesherg/cardiotox emit P(block); cardiogenai emits pIC50. The fit calibrates each to pIC50.
+# A real 4-architecture fusion, each source calibrated LINEARLY to the pIC50 target:
+#   admet_ai (chemprop), bayesherg (graph-NN), cardiotox_net (meta-ensemble) emit P(block) [0,1] -> the
+#   linear fit maps each prob monotonically to pIC50 (ranking within a source preserved); cardiogenai emits
+#   pIC50 NATIVELY (same units as the target). cardiogenai's pIC50 is read from the source's raw field (the
+#   aggregator carries it as value=None on the P(block) gate scale, F-1; the trainer + core.fusion fall back
+#   to raw when value is None), so it enters the fit as a near-identity linear source. This tests whether
+#   combining four independent architectures beats the best single hERG predictor.
 sources:
-  - {model: admet_ai,       calibration: logistic}   # P(block) -> pIC50 via a monotone map
-  - {model: bayesherg,      calibration: logistic}
-  - {model: cardiotox_net,  calibration: logistic}
-  - {model: cardiogenai,    calibration: linear}      # native pIC50; now IN the fit (was carried-only)
+  - {model: admet_ai,       calibration: linear}
+  - {model: bayesherg,      calibration: linear}
+  - {model: cardiotox_net,  calibration: linear}
+  - {model: cardiogenai,    calibration: linear}   # native pIC50 read from raw (F-1 P(block) map deferred)
 
 fusion: {method: ridge, regularization: 0.5}
 uncertainty:
@@ -30,4 +36,4 @@ leakage:
   exclude_models: [admet_ai, bayesherg, cardiotox_net, cardiogenai]
   note: >
     subtract TDC hERG + BayeshERG (14,322 fine-tune + hERGCentral pretrain) + CardioTox (train + Test-I/II/III)
-    + CardioGenAI/CToxPred train+eval by InChIKey. Temporal slice is the only defensible option.
+    + CardioGenAI/CToxPred train+eval by InChIKey, on top of the >=2021 temporal cut. Temporal slice only.

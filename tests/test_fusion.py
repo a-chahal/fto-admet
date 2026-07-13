@@ -91,6 +91,15 @@ def test_no_matching_source_yields_none():
     assert apply_spec(spec, [_src("other", 1.0)]) == (None, None)
 
 
+def test_source_with_no_harmonized_value_calibrates_its_raw():
+    # A source the aggregator left off the common scale (value=None) but which predicted a native raw
+    # (e.g. CardioGenAI's pIC50 on the P(block) hERG feature) is calibrated from its raw, not dropped.
+    spec = _spec([SourceCalibration(model="cardiogenai", kind="linear", params=[1.0, 0.5])],
+                 weights={"cardiogenai": 1.0})
+    score, _ = apply_spec(spec, [Source(model="cardiogenai", value=None, raw=6.0, raw_unit="pIC50")])
+    assert math.isclose(score, 1.0 * 6.0 + 0.5)   # calibrated from raw=6.0, not imputed/dropped
+
+
 # -------------------------------------------------------------------------- conformal half-width
 def test_conformal_halfwidth_is_quantile_times_disagreement_std():
     unc = UncertaintySpec(method="normalized_conformal", quantile=2.0, scale="disagreement_std")

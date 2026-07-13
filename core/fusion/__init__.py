@@ -101,7 +101,10 @@ def apply_spec(spec: FusionSpec, sources: Sequence[Source]) -> tuple[float | Non
         cal = next((c for c in spec.sources if c.model == s.model), None)
         if cal is None:
             continue
-        cv = _calibrate(cal, s.value)
+        # Mirror the trainer (training/features.py): calibrate the harmonised value, or the native ``raw``
+        # when the aggregator left this source off the common scale (value=None) - so a spec fit on a
+        # source's raw prediction (e.g. CardioGenAI pIC50) applies that same raw prediction at inference.
+        cv = _calibrate(cal, s.value if s.value is not None else s.raw)
         if cv is not None:
             present[s.model] = cv
 
