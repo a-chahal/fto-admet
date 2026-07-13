@@ -1,0 +1,65 @@
+{
+  "feature": "bbb_penetration",
+  "endpoint": "distribution",
+  "target": {
+    "name": "Kp_uu_brain",
+    "units": "unitless",
+    "transform": "log"
+  },
+  "sources": [
+    {
+      "model": "bbb_score",
+      "kind": "linear",
+      "params": [
+        0.36745753193774294,
+        -2.2065920279929676
+      ],
+      "impute_value": -0.545253980139549
+    },
+    {
+      "model": "boiled_egg",
+      "kind": "linear",
+      "params": [
+        0.735640033130816,
+        -1.038289321493181
+      ],
+      "impute_value": -0.5452539801395491
+    }
+  ],
+  "fusion": {
+    "weights": {
+      "bbb_score": 0.6336867382078013,
+      "boiled_egg": 0.4814483517299753
+    },
+    "intercept": 0.06277786604229829,
+    "method": "ridge",
+    "regularization": 1.0
+  },
+  "uncertainty": {
+    "method": "normalized_conformal",
+    "alpha": 0.1,
+    "quantile": 7.992391680360574,
+    "scale": "disagreement_std",
+    "scale_floor": 0.1,
+    "constant_width": null
+  },
+  "provenance": {
+    "dataset": "kpuu_brain_compilation",
+    "dataset_hash": "sha256:a631392b1e832995",
+    "exclusion_index_hash": null,
+    "n_train": 94,
+    "n_calib": 32,
+    "metrics": {
+      "test_mae": 0.43932602028015366,
+      "test_r2": 0.4866185897116423,
+      "test_spearman": 0.717411032983514,
+      "best_single_source_r2": 0.5279345502817925,
+      "fusion_uplift_r2": -0.04131596057015019,
+      "test_conformal_coverage": 0.967741935483871,
+      "n_test": 31.0
+    },
+    "trained_at": null,
+    "git_sha": "5e3f573ce8ce8d8228bbdc7fdf4b56d0a828e64e",
+    "notes": null
+  }
+}
