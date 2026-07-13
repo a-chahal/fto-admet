@@ -28,7 +28,12 @@ from core.models import Endpoint, ModelName
 
 from core.run import aggregate_records
 
-_CHUNK = 200
+# Molecules per dispatch batch = per model (re)load. Each _screen_chunk spawns a fresh `pixi run python
+# run.py` that pays the full pixi-activation + import + model-load overhead (~30s), so a small chunk over a
+# large set is dominated by reloads (200 -> ~90 reloads over an 18k screen). Dispatch passes no timeout, and
+# the adapters batch internally, so a larger chunk is safe; the only cost is a deeper binary-split on the
+# rare bad molecule. 1000 amortizes the reload ~5x while keeping the split shallow and the checkpoints frequent.
+_CHUNK = 1000
 
 
 def _raw_cache_path(model: str) -> Path:
