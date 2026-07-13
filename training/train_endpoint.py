@@ -29,7 +29,7 @@ from core.fusion.spec import (
     Target,
     UncertaintySpec,
 )
-from training import conformal, features
+from training import conformal, features, split
 from training import datasets as ds
 from training.datasets import biogen  # noqa: F401  (import registers the biogen loader)
 from training import fit as fitmod
@@ -116,10 +116,19 @@ def train(feature_key: str, *, root: Path) -> FusionSpec:
         raise RuntimeError(f"{feature_key}: only {n} rows after screening; too few.")
 
     # 5. 3-way split: train (fit) / calibration (conformal) / test (honest final metrics, never touched).
-    rng = np.random.default_rng(0)
-    perm = rng.permutation(n)
-    n_tr, n_cal = int(0.6 * n), int(0.2 * n)
-    tr, cal, te = perm[:n_tr], perm[n_tr:n_tr + n_cal], perm[n_tr + n_cal:]
+    #    Scaffold-holdout by DEFAULT (whole scaffolds never span splits) so analog leakage in contaminated
+    #    public data does not inflate the metrics; a recipe may set `split: random`, and scaffold_split
+    #    itself falls back to random for tiny/single-scaffold sets. See training/split.py.
+    smiles_by_mol = data.drop_duplicates("mol_id").set_index("mol_id")["smiles"]
+    row_smiles = [str(smiles_by_mol.get(mid, "")) for mid in df.index]
+    if r.get("split", "scaffold") == "random":
+        rng = np.random.default_rng(0)
+        perm = rng.permutation(n)
+        n_tr0, n_cal0 = int(0.6 * n), int(0.2 * n)
+        tr, cal, te = perm[:n_tr0], perm[n_tr0:n_tr0 + n_cal0], perm[n_tr0 + n_cal0:]
+    else:
+        tr, cal, te = split.scaffold_split(row_smiles, seed=0)
+    n_tr, n_cal = len(tr), len(cal)
 
     calibrated_cols, source_specs = [], []
     for s in srcs:

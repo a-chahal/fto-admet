@@ -1,0 +1,26 @@
+feature: microsomal_clint
+endpoint: clearance
+priority: medium
+
+target:
+  name: hlm_microsomal_clint
+  units: log_mL_min_kg
+  transform: identity            # Biogen column is already LOG HLM_CLint
+  dataset: biogen_adme_2023
+  loader_kwargs: {target: hlm_clint}
+  note: >
+    Biogen HLM microsomal CLint (the same measured column as hepatocyte_clint). This head calibrates
+    admet_ai's Clearance_Microsome_AZ output (the matrix-matched microsomal head) to the measured HLM
+    CLint, whereas hepatocyte_clint calibrates the Clearance_Hepatocyte_AZ head to the same target - so the
+    pair directly compares which admet_ai clearance head tracks Biogen HLM better. Single-source: this is
+    validation + a calibrated interval, not fusion.
+
+sources:
+  - {model: admet_ai, calibration: linear}
+
+fusion: {method: linear, regularization: 0.0}
+uncertainty: {method: normalized_conformal, alpha: 0.1, scale: constant, constant_width: 0.3}
+
+leakage:
+  exclude_models: [admet_ai]
+  note: subtract TDC Clearance_Microsome_AZ by InChIKey.
