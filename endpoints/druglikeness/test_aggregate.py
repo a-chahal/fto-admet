@@ -1,11 +1,14 @@
 """Tests for the druglikeness aggregator: three separate single-source context features (NEVER a gate).
 
 Synthetic ``OutputRecord``-shaped inputs (laptop, core env - no box, no GPU). They pin:
-- lipinski_violations is a single numeric source (score = the count, uncertainty None);
-- veber_pass carries the native boolean but has NO fused score (a boolean has no mean);
+- lipinski_violations is a single numeric source (score = the count, no interval);
+- veber_pass carries the native boolean in reads but has NO fused score (a boolean has no mean);
 - qed is a single numeric source (score = the value);
 - missing flags yield empty features (no crash, no fabricated zeros); the accepted input shapes normalize
   the same; multiple molecules stay independent.
+
+Output shape (per feature): score, unit, interval[low,high], reads{model:harmonized}, raw{model:native},
+uncertainty{model_type:value}.
 """
 
 from __future__ import annotations
@@ -33,43 +36,35 @@ def _feat(mol, name):
     return next(f for f in mol.features if f.feature == name)
 
 
-def _src(feature, model):
-    return next(s for s in feature.sources if s.model == model)
-
-
 # -------------------------------------------------------------------------- lipinski: single numeric source
 def test_lipinski_violations_single_numeric_source():
     f = _feat(aggregate({"m": [lvq_rec(lipinski=1)]}).molecules[0], LIPINSKI)
-    assert f.score == 1.0 and f.uncertainty is None      # single source -> value, no spread
-    assert f.n_sources == 1
-    assert _src(f, "lipinski_veber_qed").value == 1
+    assert f.score == 1.0 and f.interval is None         # single source -> value, no spread
+    assert f.reads == {"lipinski_veber_qed": 1.0}
 
 
 def test_zero_violations_is_a_value_not_absent():
     f = _feat(aggregate({"m": [lvq_rec(lipinski=0)]}).molecules[0], LIPINSKI)
-    assert f.score == 0.0 and f.n_sources == 1           # 0 is meaningful, not dropped
+    assert f.score == 0.0 and f.reads == {"lipinski_veber_qed": 0.0}   # 0 is meaningful, not dropped
 
 
 # -------------------------------------------------------------------------- veber: boolean, score deferred
 def test_veber_pass_carries_boolean_with_deferred_score():
     f = _feat(aggregate({"m": [lvq_rec(veber=True)]}).molecules[0], VEBER)
-    assert f.score is None and f.uncertainty is None     # a boolean has no mean
-    assert f.n_sources == 1
-    assert _src(f, "lipinski_veber_qed").value is True    # native boolean carried
+    assert f.score is None and f.interval is None        # a boolean has no mean
+    assert f.reads["lipinski_veber_qed"] is True         # native boolean carried in reads
 
 
 def test_veber_false_is_carried_not_dropped():
     f = _feat(aggregate({"m": [lvq_rec(veber=False)]}).molecules[0], VEBER)
-    assert f.n_sources == 1
-    assert _src(f, "lipinski_veber_qed").value is False
+    assert f.reads["lipinski_veber_qed"] is False
 
 
 # -------------------------------------------------------------------------- qed: single numeric source
 def test_qed_single_numeric_source():
     f = _feat(aggregate({"m": [lvq_rec(qed=0.734)]}).molecules[0], QED)
-    assert f.score == 0.734 and f.uncertainty is None
-    assert f.n_sources == 1
-    assert _src(f, "lipinski_veber_qed").value == 0.734
+    assert f.score == 0.734 and f.interval is None
+    assert f.reads == {"lipinski_veber_qed": 0.734}
 
 
 # -------------------------------------------------------------------------- three features, uniform shape
@@ -79,7 +74,8 @@ def test_three_features_and_uniform_shape():
     mol = res.molecules[0]
     assert {f.feature for f in mol.features} == {LIPINSKI, VEBER, QED}
     assert set(type(mol).model_fields) == {"endpoint", "mol_id", "features"}
-    assert set(type(mol.features[0]).model_fields) == {"feature", "score", "uncertainty", "unit", "n_sources", "sources"}
+    assert set(type(mol.features[0]).model_fields) == {
+        "feature", "score", "unit", "interval", "reads", "raw", "uncertainty"}
 
 
 def test_missing_signals_yield_empty_features_no_crash():
@@ -88,7 +84,7 @@ def test_missing_signals_yield_empty_features_no_crash():
            "uncertainty": None, "raw": {}, "provenance": PROV}
     mol = aggregate({"m": [rec]}).molecules[0]
     for f in mol.features:
-        assert f.n_sources == 0 and f.score is None
+        assert f.reads == {} and f.score is None
 
 
 def test_none_valued_flags_are_dropped_not_fabricated():
@@ -97,7 +93,7 @@ def test_none_valued_flags_are_dropped_not_fabricated():
            "uncertainty": None, "raw": {}, "provenance": PROV}
     mol = aggregate({"m": [rec]}).molecules[0]
     for f in mol.features:
-        assert f.n_sources == 0 and f.score is None
+        assert f.reads == {} and f.score is None
 
 
 # -------------------------------------------------------------------------- normalization / independence

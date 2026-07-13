@@ -2,7 +2,7 @@
 """lipophilicity aggregator - one feature: ``logD`` at pH 7.4 (a clean same-scale ensemble).
 
 Four models report lipophilicity; all harmonize onto the common feature ``logD`` (log units, pH 7.4)
-before the shared ensemble mean/std:
+before the shared fusion:
 
     model          native key                    native scale   -> logD@7.4
     ------         ----------                    ------------   ----------
@@ -16,9 +16,10 @@ The load-bearing science is the **logP -> logD conversion** (F-12): for the di-b
 ensemble. The conversion needs one shared pKa (F-13, DEFERRED): the placeholder is OPERA's ``pKa_b``
 (basic; FTO is basic), read from the OPERA record, or an injected ``pka=``. A logP lens with no available
 pKa cannot be harmonized and is carried with ``value=None`` (kept OUT of the score, never averaged raw),
-its native logP still visible in ``raw``. Everything else - ``score`` = mean of the harmonized logD
-values, ``uncertainty`` = std over them, the native ``raw`` + ``raw_unit`` on each converted source - is
-the shared shape from ``core.aggregate``. See ``docs/ENDPOINTS.md`` for the fuller rationale.
+its native logP still visible in ``raw``. Each source also carries its model's native AD / confidence
+signals in ``native`` (OPERA conf_index/AD, SwissADME lens spread); ``build_feature`` fuses the sources
+(trained spec if present, else equal-weight) and projects them into the flat output shape from
+``core.aggregate``. See ``docs/ENDPOINTS.md`` for the fuller rationale.
 """
 
 from __future__ import annotations
@@ -29,12 +30,13 @@ from typing import Any
 
 from core.aggregate import (
     EndpointVerdict,
-    Feature,
     MoleculeVerdict,
     Source,
+    as_output_record,
     normalize_molecules,
+    num,
 )
-from core.fusion import fuse
+from core.fusion import build_feature
 from core.models import Endpoint, ModelName
 from core.schemas import OutputRecord
 
@@ -42,19 +44,6 @@ FEATURE = "logD"
 UNIT = "logD (log units, pH 7.4, up = more lipophilic)"
 DEFAULT_PH = 7.4
 LOGP_UNIT = "logP"
-
-
-def _as_output_record(rec: Any) -> OutputRecord:
-    return rec if isinstance(rec, OutputRecord) else OutputRecord.model_validate(rec)
-
-
-def _num(value: Any) -> float | None:
-    """Coerce to a finite float, or ``None`` (a source with no numeric value never enters the mean)."""
-    try:
-        f = float(value)
-    except (TypeError, ValueError):
-        return None
-    return f if f == f and f not in (float("inf"), float("-inf")) else None
 
 
 def logp_to_logd(logp: float, pka: float, ph: float = DEFAULT_PH, kind: str = "base") -> float:
@@ -94,9 +83,9 @@ def _resolve_pka(
             continue
         ev = rec.endpoint_values or {}
         if pka_b is None and ev.get("pKa_b") is not None:
-            pka_b = _num(ev["pKa_b"])
+            pka_b = num(ev["pKa_b"])
         if pka_a is None and ev.get("pKa_a") is not None:
-            pka_a = _num(ev["pKa_a"])
+            pka_a = num(ev["pKa_a"])
     if pka_b is not None:
         return pka_b, "base"
     if pka_a is not None:
@@ -104,14 +93,15 @@ def _resolve_pka(
     return None, None
 
 
-def _logp_source(model: str, logp: float, pka: float | None, kind: str | None, ph: float) -> Source:
-    """A logP lens harmonized to logD via the shared pKa; ``value=None`` (excluded) when no pKa exists (F-12)."""
-    if pka is None:
-        return Source(model=model, value=None, raw=logp, raw_unit=LOGP_UNIT,
-                      note="logP; no shared pKa, excluded from the logD score (F-12)")
-    logd = logp_to_logd(logp, pka, ph=ph, kind=kind or "base")
-    return Source(model=model, value=logd, raw=logp, raw_unit=LOGP_UNIT,
-                  note=f"logP -> logD via Henderson-Hasselbalch (pKa={pka}, {kind or 'base'})")
+def _logp_source(model: str, logp: float, pka: float | None, kind: str | None, ph: float,
+                 native: dict[str, Any]) -> Source:
+    """A logP lens harmonized to logD via the shared pKa; ``value=None`` (excluded) when no pKa exists (F-12).
+
+    The native logP is retained in ``raw`` (it differs from the harmonized logD); ``native`` carries the
+    model's own uncertainty signals.
+    """
+    logd = None if pka is None else logp_to_logd(logp, pka, ph=ph, kind=kind or "base")
+    return Source(model=model, value=logd, raw=logp, raw_unit=LOGP_UNIT, native=native)
 
 
 def _sources(records: Sequence[OutputRecord], pka: float | None, kind: str | None, ph: float) -> list[Source]:
@@ -119,35 +109,35 @@ def _sources(records: Sequence[OutputRecord], pka: float | None, kind: str | Non
     sources: list[Source] = []
     for rec in records:
         ev = rec.endpoint_values or {}
+        u = rec.uncertainty
         if rec.model == ModelName.opera:
-            v = _num(ev.get("LogD"))
+            v = num(ev.get("LogD"))
             if v is not None:
-                conf = rec.uncertainty.conf_index if rec.uncertainty is not None else None
-                note = "native logD" + (f"; conf_index={conf}" if conf is not None else "")
-                sources.append(Source(model="opera", value=v, note=note))
+                native = ({"conf_index": u.conf_index, "ad_in_domain": u.ad_in_domain,
+                           "ad_index": u.ad_index} if u is not None else {})
+                sources.append(Source(model="opera", value=v, native=native))
         elif rec.model == ModelName.admet_ai:
-            v = _num(ev.get("Lipophilicity_AstraZeneca"))
+            v = num(ev.get("Lipophilicity_AstraZeneca"))
             if v is not None:
-                sources.append(Source(model="admet_ai", value=v, note="native logD7.4 head"))
+                sources.append(Source(model="admet_ai", value=v))
         elif rec.model == ModelName.rdkit_crippen:
-            lp = _num(ev.get("logP_crippen"))
+            lp = num(ev.get("logP_crippen"))
             if lp is not None:
-                sources.append(_logp_source("rdkit_crippen", lp, pka, kind, ph))
+                sources.append(_logp_source("rdkit_crippen", lp, pka, kind, ph, {}))
         elif rec.model == ModelName.swissadme:
-            lp = _num(ev.get("Consensus_logP"))
+            lp = num(ev.get("Consensus_logP"))
             if lp is not None:
-                sources.append(_logp_source("swissadme", lp, pka, kind, ph))
+                native = {"spread_std": (u.extra or {}).get("spread_std")} if u is not None else {}
+                sources.append(_logp_source("swissadme", lp, pka, kind, ph, native))
     return sources
 
 
 def _molecule(mol_id: str, records: Sequence[Any], pka: float | None, pka_kind: str | None,
               ph: float) -> MoleculeVerdict:
-    recs = [_as_output_record(r) for r in records]
+    recs = [as_output_record(r) for r in records]
     pka_used, kind = _resolve_pka(recs, pka, pka_kind)
     sources = _sources(recs, pka_used, kind, ph)
-    score, uncertainty = fuse(Endpoint.lipophilicity, FEATURE, sources)   # trained spec if present, else equal-weight
-    feature = Feature(feature=FEATURE, score=score, uncertainty=uncertainty, unit=UNIT,
-                      n_sources=len(sources), sources=sources)
+    feature = build_feature(Endpoint.lipophilicity, FEATURE, UNIT, sources)
     return MoleculeVerdict(endpoint=Endpoint.lipophilicity, mol_id=mol_id, features=[feature])
 
 
@@ -158,7 +148,7 @@ def aggregate(
     pka_kind: str | None = None,
     ph: float = DEFAULT_PH,
 ) -> EndpointVerdict:
-    """Screen lipophilicity for a batch: one ``logD`` feature per molecule (score = mean, uncertainty = std).
+    """Screen lipophilicity for a batch: one ``logD`` feature per molecule (fused across the harmonized lenses).
 
     ``pka`` (with optional ``pka_kind`` in ``{"base","acid"}``) injects the single shared pKa for the
     logP -> logD conversion; when it is ``None`` the placeholder (OPERA ``pKa_b``, F-13) is read per molecule.

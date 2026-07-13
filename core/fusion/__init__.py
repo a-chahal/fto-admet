@@ -21,7 +21,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-from core.aggregate import Source, ensemble
+from core.aggregate import Feature, Source, ensemble
 from core.fusion.spec import FusionSpec, SourceCalibration, UncertaintySpec
 
 _SPECS_DIR = Path(__file__).parent / "specs"
@@ -149,3 +149,25 @@ def fuse(endpoint: str, feature: str, sources: Sequence[Source]) -> tuple[float 
     if spec is None:
         return ensemble([s.value for s in sources], [s.weight for s in sources])
     return apply_spec(spec, list(sources))
+
+
+def build_feature(endpoint: Any, feature: str, unit: str | None, sources: Sequence[Source]) -> Feature:
+    """The one place a ``Feature`` is assembled: fuse the sources, then flatten them into the output shape.
+
+    Calls :func:`fuse` (trained spec if present, else equal-weight) for the ``score`` + interval half-width,
+    turns the half-width into ``interval = [score - h, score + h]``, and projects the sources into the three
+    flat maps: ``reads`` (harmonized value per model), ``raw`` (native value where present), and
+    ``uncertainty`` (each source's native signals, keyed ``"model_type"``). Every aggregator calls this, so
+    the reshape + projection live here once instead of being hand-rolled per endpoint.
+    """
+    score, half = fuse(str(endpoint), feature, sources)
+    interval = (score - half, score + half) if (score is not None and half is not None) else None
+    reads = {s.model: s.value for s in sources if s.value is not None}
+    raw = {s.model: s.raw for s in sources if s.raw is not None}
+    uncertainty: dict[str, Any] = {}
+    for s in sources:
+        for kind, val in (s.native or {}).items():
+            if val is not None:                      # skip absent native signals (keep the map clean)
+                uncertainty[f"{s.model}_{kind}"] = val
+    return Feature(feature=feature, score=score, unit=unit, interval=interval,
+                   reads=reads, raw=raw, uncertainty=uncertainty)

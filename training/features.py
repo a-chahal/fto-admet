@@ -88,12 +88,11 @@ def screen_smiles(
         cell: dict = {"mol_id": mid}
         f = next((x for x in (getattr(verdict, "features", []) or []) if x.feature == feature), None)
         if f is not None:
-            for s in f.sources:
-                # Use the harmonised value; fall back to the source's native ``raw`` when the aggregator
-                # left it OFF the common scale (value=None) - e.g. CardioGenAI's pIC50 on the P(block)
-                # feature, or the bbb mixed-scale reads. Per-source calibration reconciles the scale, so a
-                # natively-predicted value is not discarded just because it is on a different scale.
-                cell[s.model] = s.value if s.value is not None else s.raw
+            for m in set(f.reads) | set(f.raw):
+                # The harmonised read, or the native raw when the aggregator left this model OFF the common
+                # scale (only in ``raw``, e.g. CardioGenAI's pIC50 on the pIC50-target hERG feature). Per-
+                # source calibration reconciles the scale, so a natively-predicted value is not discarded.
+                cell[m] = f.reads.get(m, f.raw.get(m))
         rows.append(cell)
     return pd.DataFrame(rows).set_index("mol_id")
 

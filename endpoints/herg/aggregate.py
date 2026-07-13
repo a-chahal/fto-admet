@@ -7,7 +7,7 @@ probability scale, so they harmonize into one clean ensemble feature ``hERG_bloc
     model          native key    native scale        -> hERG_block
     ------         ----------    ------------        ------------
     admet_ai       hERG          P(block) [0,1]      identity
-    bayesherg      P_block       P(block) [0,1]      identity (carries alea/epis in the note)
+    bayesherg      P_block       P(block) [0,1]      identity (carries alea/epis in native uncertainty)
     cardiotox_net  P_block       P(block) [0,1]      identity (Morgan-onbits applicability limit)
     cardiogenai    hERG pIC50    pIC50 (not a prob)  carried, NOT scored (value=None)
 
@@ -30,10 +30,11 @@ from core.aggregate import (
     Feature,
     MoleculeVerdict,
     Source,
-    ensemble,
+    as_output_record,
     normalize_molecules,
+    num,
 )
-from core.fusion import fuse
+from core.fusion import build_feature
 from core.models import Endpoint, ModelName
 from core.schemas import OutputRecord
 
@@ -56,68 +57,45 @@ CAV_UNIT = "pIC50 (up = more block)"
 PIC50_UNIT = "pIC50"
 
 
-def _as_output_record(rec: Any) -> OutputRecord:
-    return rec if isinstance(rec, OutputRecord) else OutputRecord.model_validate(rec)
-
-
-def _num(value: Any) -> float | None:
-    """Coerce to a finite float, or ``None`` (a source with no numeric value never enters the mean)."""
-    try:
-        f = float(value)
-    except (TypeError, ValueError):
-        return None
-    return f if f == f and f not in (float("inf"), float("-inf")) else None
-
-
 def _herg_block_feature(records: Sequence[OutputRecord]) -> Feature:
     """P(hERG block): three identity-probability sources ensembled; CardioGenAI's pIC50 carried, not scored."""
     sources: list[Source] = []
     for rec in records:
         ev = rec.endpoint_values or {}
         if rec.model == ModelName.admet_ai:
-            v = _num(ev.get(ADMET_AI_HERG_KEY))
+            v = num(ev.get(ADMET_AI_HERG_KEY))
             if v is not None:
-                sources.append(Source(model="admet_ai", value=v, note="P(hERG block)"))
+                sources.append(Source(model="admet_ai", value=v))
         elif rec.model == ModelName.bayesherg:
-            v = _num(ev.get(BAYESHERG_PBLOCK_KEY))
+            v = num(ev.get(BAYESHERG_PBLOCK_KEY))
             if v is not None:
-                unc = rec.uncertainty
-                alea = unc.aleatoric if unc is not None else None
-                epis = unc.epistemic if unc is not None else None
-                sources.append(Source(model="bayesherg", value=v,
-                                      note=f"P(block); alea={alea} epis={epis}"))
+                u = rec.uncertainty
+                native = {"aleatoric": u.aleatoric, "epistemic": u.epistemic} if u else {}
+                sources.append(Source(model="bayesherg", value=v, native=native))
         elif rec.model == ModelName.cardiotox_net:
-            v = _num(ev.get(CARDIOTOX_PBLOCK_KEY))
+            v = num(ev.get(CARDIOTOX_PBLOCK_KEY))
             if v is not None:
-                sources.append(Source(model="cardiotox_net", value=v, note="P(block); Morgan onbits AD"))
+                u = rec.uncertainty
+                native = ({"ad_in_domain": u.ad_in_domain,
+                           "morgan_onbits": (u.extra or {}).get("morgan_onbits")} if u else {})
+                sources.append(Source(model="cardiotox_net", value=v, native=native))
         elif rec.model == ModelName.cardiogenai:
-            pic50 = _num(ev.get(CARDIOGENAI_HERG_PIC50_KEY))
+            pic50 = num(ev.get(CARDIOGENAI_HERG_PIC50_KEY))
             if pic50 is not None:
-                sources.append(Source(
-                    model="cardiogenai", value=None, raw=pic50, raw_unit=PIC50_UNIT,
-                    note="native pIC50; scored via the trained fusion from raw (the feature is now on the "
-                         "pIC50 scale, so no pIC50->P(block) map is needed - F-1 is resolved by scale)",
-                ))
-    score, uncertainty = fuse(Endpoint.herg, HERG_BLOCK, sources)   # trained 4-arch spec -> calibrated pIC50
-    return Feature(feature=HERG_BLOCK, score=score, uncertainty=uncertainty, unit=HERG_UNIT,
-                   n_sources=len(sources), sources=sources)
+                sources.append(Source(model="cardiogenai", value=None, raw=pic50, raw_unit=PIC50_UNIT))
+    return build_feature(Endpoint.herg, HERG_BLOCK, HERG_UNIT, sources)
 
 
 def _channel_feature(records: Sequence[OutputRecord], key: str, feature: str, unit: str) -> Feature:
     """A single-source CardioGenAI ion-channel pIC50 read (NaV1.5 or CaV1.2) - its own separate entity."""
-    sources: list[Source] = []
-    for rec in records:
-        if rec.model == ModelName.cardiogenai:
-            v = _num((rec.endpoint_values or {}).get(key))
-            if v is not None:
-                sources.append(Source(model="cardiogenai", value=v, note="pIC50 (up = more block)"))
-    score, uncertainty = ensemble([s.value for s in sources], [s.weight for s in sources])
-    return Feature(feature=feature, score=score, uncertainty=uncertainty, unit=unit,
-                   n_sources=len(sources), sources=sources)
+    sources = [Source(model="cardiogenai", value=v)
+               for rec in records if rec.model == ModelName.cardiogenai
+               for v in [num((rec.endpoint_values or {}).get(key))] if v is not None]
+    return build_feature(Endpoint.herg, feature, unit, sources)
 
 
 def _molecule(mol_id: str, records: Sequence[Any]) -> MoleculeVerdict:
-    recs = [_as_output_record(r) for r in records]
+    recs = [as_output_record(r) for r in records]
     features = [
         _herg_block_feature(recs),
         _channel_feature(recs, CARDIOGENAI_NAV_KEY, NAV_BLOCK, NAV_UNIT),

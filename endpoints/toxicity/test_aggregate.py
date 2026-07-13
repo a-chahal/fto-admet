@@ -2,13 +2,17 @@
 
 Synthetic ``OutputRecord``-shaped inputs (laptop, core env - no box, no GPU). They pin what this endpoint
 guarantees after the shape change:
-- each ADMET-AI classifier head becomes its OWN single-source P(toxic) feature (score = the value,
-  uncertainty undefined for one point);
+- each ADMET-AI classifier head becomes its OWN single-source P(toxic) feature; an untrained head passes its
+  value straight through to ``score`` (no interval), a TRAINED head (``carcinogenicity``, ``acute_ld50``)
+  calibrates the value and, where its spec asks for it, attaches a conformal interval;
 - ``LD50_Zhu`` is a SEPARATE ``acute_ld50`` magnitude feature (log 1/(mol/kg), up = more toxic), never
   a probability and never folded into another feature;
-- the toxicophores count becomes ``tox_alerts`` with the matched names summarized into the source note;
+- the toxicophores count becomes ``tox_alerts`` (the matched names stay upstream in the model's raw record);
 - a feature is emitted ONLY when its source key is present (no fabricated zeros); the output is the
   uniform ``core.aggregate`` shape.
+
+The per-model harmonized read is always recoverable in ``f.reads`` (unchanged by any calibration), so trained
+features are pinned via ``reads``, not via an exact fused ``score`` (those values live in tests/test_fusion.py).
 """
 
 from __future__ import annotations
@@ -22,6 +26,9 @@ from endpoints.toxicity.aggregate import (
 )
 
 PROV = {"model": "test"}
+
+# Heads with a committed fusion spec: their ``score`` is calibrated (not a straight passthrough).
+TRAINED_HEADS = {"carcinogenicity"}
 
 
 def admet_ai(**heads) -> dict:
@@ -51,48 +58,56 @@ def test_each_admet_ai_head_becomes_its_own_single_source_feature():
     rec = admet_ai(**{"DILI": 0.8, "AMES": 0.6, "hERG": 0.4, "NR-AR": 0.1,
                       "SR-p53": 0.3, "Carcinogens_Lagunin": 0.2})
     mol = aggregate({"m": [rec]}).molecules[0]
-    got = {f.feature: f.score for f in mol.features}
-    assert got == {"dili": 0.8, "ames_mutagenicity": 0.6, "herg_cardiotox": 0.4,
-                   "nr_ar": 0.1, "sr_p53": 0.3, "carcinogenicity": 0.2}
+    # untrained heads pass their value straight through to score.
+    passthrough = {"dili": 0.8, "ames_mutagenicity": 0.6, "herg_cardiotox": 0.4,
+                   "nr_ar": 0.1, "sr_p53": 0.3}
+    for feature, val in passthrough.items():
+        assert _feat(mol, feature).score == val
+    # the trained carcinogenicity head calibrates: score present but not the raw 0.2; the read is preserved.
+    carc = _feat(mol, "carcinogenicity")
+    assert carc.score is not None
+    assert carc.reads == {"admet_ai": 0.2}
     dili = _feat(mol, "dili")
-    assert dili.n_sources == 1 and dili.uncertainty is None       # single source -> no disagreement
-    assert dili.sources[0].model == "admet_ai"
+    assert dili.reads == {"admet_ai": 0.8} and dili.interval is None   # single untrained source -> no interval
     assert dili.unit == "P(dili) [0,1] (up = more toxic)"
 
 
 def test_full_tox21_panel_maps_every_head_by_its_feature_name():
-    # feed every mapped head at a distinct value, assert the feature-name -> value mapping is exact.
+    # feed every mapped head at a distinct value, assert the feature-name -> read mapping is exact
+    # (reads are the harmonized value, unaffected by any per-feature calibration).
     values = {key: round(0.01 * (i + 1), 2) for i, key in enumerate(ADMET_AI_PROB_HEADS.values())}
     mol = aggregate({"m": [admet_ai(**values)]}).molecules[0]
     for feature, key in ADMET_AI_PROB_HEADS.items():
-        assert _feat(mol, feature).score == values[key]
+        assert _feat(mol, feature).reads == {"admet_ai": values[key]}
+        if feature not in TRAINED_HEADS:
+            assert _feat(mol, feature).score == values[key]     # untrained -> straight passthrough
 
 
 # -------------------------------------------------------------------------- LD50 is a separate magnitude
 def test_ld50_zhu_is_a_separate_magnitude_feature_not_a_probability():
     mol = aggregate({"m": [admet_ai(LD50_Zhu=2.3, DILI=0.5)]}).molecules[0]
     ld50 = _feat(mol, LD50_FEATURE)
-    assert ld50.score == 2.3
+    # trained magnitude: the read is preserved, score is calibrated, and a conformal interval is attached.
+    assert ld50.reads == {"admet_ai": 2.3}
+    assert ld50.score is not None and ld50.interval is not None
     assert ld50.unit == "log(1/(mol/kg)) (up = more acutely toxic)"
-    assert ld50.n_sources == 1 and ld50.uncertainty is None
     # LD50 never becomes a probability feature; DILI stays its own feature.
     assert _has(mol, "dili")
     assert LD50_FEATURE not in ADMET_AI_PROB_HEADS
 
 
 # -------------------------------------------------------------------------- toxicophores count -> tox_alerts
-def test_toxicophores_count_becomes_tox_alerts_with_names_in_note():
+def test_toxicophores_count_becomes_tox_alerts():
     mol = aggregate({"m": [toxicophores(count=2, names=["nitro group", "michael acceptor"])]}).molecules[0]
     alerts = _feat(mol, TOX_ALERTS_FEATURE)
-    assert alerts.score == 2 and alerts.n_sources == 1
+    assert alerts.score == 2 and alerts.reads == {"toxicophores": 2.0}
     assert alerts.unit == "count of BRENK tox alerts (0 = clean)"
-    assert alerts.sources[0].note == "nitro group; michael acceptor"
 
 
 def test_tox_alerts_zero_count_is_still_emitted_as_a_real_read():
     mol = aggregate({"m": [toxicophores(count=0, names=[])]}).molecules[0]
     alerts = _feat(mol, TOX_ALERTS_FEATURE)
-    assert alerts.score == 0 and alerts.sources[0].note is None
+    assert alerts.score == 0 and alerts.reads == {"toxicophores": 0.0}
 
 
 # -------------------------------------------------------------------------- emit only present keys
@@ -124,7 +139,8 @@ def test_endpoint_identity_and_uniform_shape():
     assert mol.endpoint == Endpoint.toxicity and mol.mol_id == "m"
     assert {f.feature for f in mol.features} == {"dili", LD50_FEATURE, TOX_ALERTS_FEATURE}
     assert set(type(mol).model_fields) == {"endpoint", "mol_id", "features"}
-    assert set(type(mol.features[0]).model_fields) == {"feature", "score", "uncertainty", "unit", "n_sources", "sources"}
+    assert set(type(mol.features[0]).model_fields) == {
+        "feature", "score", "unit", "interval", "reads", "raw", "uncertainty"}
 
 
 def test_multiple_molecules_independent():

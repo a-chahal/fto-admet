@@ -9,7 +9,7 @@ on purpose (F-3, CLAUDE.md §4):
     feature           sources                                    unit                     role
     -------           -------                                    ----                     ----
     hepatocyte_clint  opera Clint + admet_ai Clearance_          uL/min/10^6 cells        CLEAN 2-source
-                      Hepatocyte_AZ (SAME units)                                          ensemble (mean/std)
+                      Hepatocyte_AZ (SAME units)                                          ensemble/fusion
     systemic_cl       pksmart CL_mL_min_kg (+ fold-error)        mL/min/kg                single-source, IV CL
     microsomal_clint  admet_ai Clearance_Microsome_AZ           uL/min/mg                single-source CLint
 
@@ -19,13 +19,14 @@ matrices (hepatocyte CLint vs whole-body i.v. CL vs microsomal CLint), so any ar
 meaningless. The renal-vs-hepatic fork is resolved by EXPERIMENT, not by the models.
 
 The only within-feature fusion allowed is ``hepatocyte_clint``: OPERA ``Clint`` and ADMET-AI hepatocyte
-clearance share the SAME assay units ("uL/min/10^6 cells"), so they form a clean same-scale ensemble
-(score = mean, uncertainty = std). ``systemic_cl`` surfaces the PKSmart whole-body CL with its native
-fold-error in the note (the CL number is ranking-only, R^2=0.31, and never presented without its
-fold-error). ``microsomal_clint`` is the ADMET-AI microsomal head, a different assay/unit, single-source.
+clearance share the SAME assay units ("uL/min/10^6 cells"), so they form a clean same-scale ensemble.
+``systemic_cl`` surfaces the PKSmart whole-body CL with its native fold-error carried in ``native`` (the
+CL number is ranking-only, R^2=0.31, and never presented without its fold-error). ``microsomal_clint`` is
+the ADMET-AI microsomal head, a different assay/unit, single-source. ``build_feature`` fuses each feature's
+sources (trained spec if present, else equal-weight) and projects them into the flat output shape.
 
-Everything else - the shared shape, the mean/std math - is ``core.aggregate``. See ``docs/ENDPOINTS.md``
-for the fuller rationale.
+Everything else - the shared shape - is ``core.aggregate``. See ``docs/ENDPOINTS.md`` for the fuller
+rationale.
 """
 
 from __future__ import annotations
@@ -38,9 +39,11 @@ from core.aggregate import (
     Feature,
     MoleculeVerdict,
     Source,
+    as_output_record,
     normalize_molecules,
+    num,
 )
-from core.fusion import fuse
+from core.fusion import build_feature
 from core.models import Endpoint, ModelName
 from core.schemas import OutputRecord
 
@@ -50,7 +53,6 @@ OPERA_CLINT = "Clint"
 ADMET_AI_HEPATOCYTE = "Clearance_Hepatocyte_AZ"
 ADMET_AI_MICROSOME = "Clearance_Microsome_AZ"
 PKSMART_CL = "CL_mL_min_kg"
-PKSMART_FOLD_ERROR_KEY = "cl_fold_error"  # in pksmart uncertainty.extra (the CL fold factor)
 
 HEPATOCYTE_CLINT = "hepatocyte_clint"
 SYSTEMIC_CL = "systemic_cl"
@@ -61,56 +63,40 @@ SYSTEMIC_CL_UNIT = "mL/min/kg (whole-body IV clearance, up = faster)"
 MICROSOMAL_CLINT_UNIT = "uL/min/mg (up = faster clearance)"
 
 
-def _as_output_record(rec: Any) -> OutputRecord:
-    return rec if isinstance(rec, OutputRecord) else OutputRecord.model_validate(rec)
-
-
-def _num(value: Any) -> float | None:
-    """Coerce to a finite float, or ``None`` (a source with no numeric value never enters the mean)."""
-    try:
-        f = float(value)
-    except (TypeError, ValueError):
-        return None
-    return f if f == f and f not in (float("inf"), float("-inf")) else None
-
-
 def _hepatocyte_feature(records: Sequence[OutputRecord]) -> Feature:
     """Hepatocyte CLint: OPERA Clint + ADMET-AI hepatocyte clearance on the SAME units (clean ensemble)."""
     sources: list[Source] = []
     for rec in records:
         ev = rec.endpoint_values or {}
+        u = rec.uncertainty
         if rec.model == ModelName.opera:
-            v = _num(ev.get(OPERA_CLINT))
+            v = num(ev.get(OPERA_CLINT))
             if v is not None:
-                sources.append(Source(model="opera", value=v, note="OPERA Clint (uL/min/10^6 cells)"))
+                native = ({"conf_index": (u.extra or {}).get("Clint_conf_index"),
+                           "ad_in_domain": (u.extra or {}).get("Clint_ad_in_domain")}
+                          if u is not None else {})
+                sources.append(Source(model="opera", value=v, native=native))
         elif rec.model == ModelName.admet_ai:
-            v = _num(ev.get(ADMET_AI_HEPATOCYTE))
+            v = num(ev.get(ADMET_AI_HEPATOCYTE))
             if v is not None:
-                sources.append(Source(model="admet_ai", value=v,
-                                      note="ADMET-AI hepatocyte CLint (uL/min/10^6 cells); low-weight/qualitative (F-17)"))
-    score, uncertainty = fuse(Endpoint.clearance, HEPATOCYTE_CLINT, sources)  # trained spec -> calibration + conformal interval
-    return Feature(feature=HEPATOCYTE_CLINT, score=score, uncertainty=uncertainty,
-                   unit=HEPATOCYTE_CLINT_UNIT, n_sources=len(sources), sources=sources)
+                sources.append(Source(model="admet_ai", value=v))
+    return build_feature(Endpoint.clearance, HEPATOCYTE_CLINT, HEPATOCYTE_CLINT_UNIT, sources)
 
 
 def _systemic_feature(records: Sequence[OutputRecord]) -> Feature:
-    """Systemic (whole-body i.v.) CL from PKSmart; single source, native fold-error carried in the note."""
+    """Systemic (whole-body i.v.) CL from PKSmart; single source, native fold-error carried in ``native``."""
     sources: list[Source] = []
     for rec in records:
         if rec.model != ModelName.pksmart:
             continue
-        v = _num((rec.endpoint_values or {}).get(PKSMART_CL))
+        v = num((rec.endpoint_values or {}).get(PKSMART_CL))
         if v is None:
             continue
-        unc = rec.uncertainty
-        low = unc.fold_error_low if unc is not None else None
-        high = unc.fold_error_high if unc is not None else None
-        cl_fold = (unc.extra or {}).get(PKSMART_FOLD_ERROR_KEY) if unc is not None else None
-        note = f"fold-error low={low} high={high} cl_fold={cl_fold}"
-        sources.append(Source(model="pksmart", value=v, note=note))
-    score, uncertainty = fuse(Endpoint.clearance, SYSTEMIC_CL, sources)  # untrained -> equal-weight fallback
-    return Feature(feature=SYSTEMIC_CL, score=score, uncertainty=uncertainty,
-                   unit=SYSTEMIC_CL_UNIT, n_sources=len(sources), sources=sources)
+        u = rec.uncertainty
+        native = ({"fold_error_low": u.fold_error_low, "fold_error_high": u.fold_error_high,
+                   "ad_in_domain": u.ad_in_domain} if u is not None else {})
+        sources.append(Source(model="pksmart", value=v, native=native))
+    return build_feature(Endpoint.clearance, SYSTEMIC_CL, SYSTEMIC_CL_UNIT, sources)
 
 
 def _microsomal_feature(records: Sequence[OutputRecord]) -> Feature:
@@ -119,17 +105,14 @@ def _microsomal_feature(records: Sequence[OutputRecord]) -> Feature:
     for rec in records:
         if rec.model != ModelName.admet_ai:
             continue
-        v = _num((rec.endpoint_values or {}).get(ADMET_AI_MICROSOME))
+        v = num((rec.endpoint_values or {}).get(ADMET_AI_MICROSOME))
         if v is not None:
-            sources.append(Source(model="admet_ai", value=v,
-                                  note="ADMET-AI microsomal CLint (uL/min/mg); low-weight/qualitative (F-17)"))
-    score, uncertainty = fuse(Endpoint.clearance, MICROSOMAL_CLINT, sources)  # untrained -> equal-weight fallback
-    return Feature(feature=MICROSOMAL_CLINT, score=score, uncertainty=uncertainty,
-                   unit=MICROSOMAL_CLINT_UNIT, n_sources=len(sources), sources=sources)
+            sources.append(Source(model="admet_ai", value=v))
+    return build_feature(Endpoint.clearance, MICROSOMAL_CLINT, MICROSOMAL_CLINT_UNIT, sources)
 
 
 def _molecule(mol_id: str, records: Sequence[Any]) -> MoleculeVerdict:
-    recs = [_as_output_record(r) for r in records]
+    recs = [as_output_record(r) for r in records]
     features = [_hepatocyte_feature(recs), _systemic_feature(recs), _microsomal_feature(recs)]
     return MoleculeVerdict(endpoint=Endpoint.clearance, mol_id=mol_id, features=features)
 
@@ -137,9 +120,8 @@ def _molecule(mol_id: str, records: Sequence[Any]) -> MoleculeVerdict:
 def aggregate(molecules: Mapping[str, Sequence[Any]] | Sequence[Any]) -> EndpointVerdict:
     """Screen clearance for a batch: three DECOMPOSED features per molecule, never merged across units (F-3).
 
-    ``hepatocyte_clint`` is a clean same-unit ensemble (score = mean, uncertainty = std); ``systemic_cl``
-    and ``microsomal_clint`` are single-source reads on their own distinct units. No arithmetic ever
-    crosses the three features.
+    ``hepatocyte_clint`` is a clean same-unit ensemble; ``systemic_cl`` and ``microsomal_clint`` are
+    single-source reads on their own distinct units. No arithmetic ever crosses the three features.
     """
     mols = [_molecule(mid, recs) for mid, recs in normalize_molecules(molecules)]
     return EndpointVerdict(endpoint=Endpoint.clearance, molecules=mols, n_molecules=len(mols))

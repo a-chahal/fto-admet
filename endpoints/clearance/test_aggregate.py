@@ -2,12 +2,15 @@
 
 Synthetic ``OutputRecord``-shaped inputs only (laptop, core env - no box, no GPU). They pin the science
 that must survive the shape change:
-- ``hepatocyte_clint`` is a CLEAN 2-source ensemble (OPERA Clint + ADMET-AI hepatocyte, SAME units):
-  score = mean, uncertainty = std;
-- ``systemic_cl`` is a single PKSmart read (whole-body i.v. CL) with its native fold-error in the note;
-- ``microsomal_clint`` is a single ADMET-AI read on its own distinct unit;
-- the three features stay separate: nothing is averaged or summed across their units;
-- any subset (single source -> uncertainty None; none -> score None) is tolerated.
+- ``hepatocyte_clint`` is a CLEAN 2-source ensemble (OPERA Clint + ADMET-AI hepatocyte, SAME units),
+  scored by the trained fusion spec;
+- ``systemic_cl`` is a single PKSmart read (whole-body i.v. CL); untrained -> equal-weight passthrough,
+  its native fold-error surfaced in ``uncertainty``;
+- ``microsomal_clint`` is a single ADMET-AI read on its own distinct unit, scored by the trained spec;
+- the three features stay separate: nothing is averaged or summed across their units.
+
+Output shape (per feature): score, unit, interval[low,high], reads{model:harmonized}, raw{model:native},
+uncertainty{model_type:value}. Exact fused values are pinned in tests/test_fusion.py.
 """
 
 from __future__ import annotations
@@ -26,9 +29,15 @@ from endpoints.clearance.aggregate import (
 PROV = {"model": "test"}
 
 
-def opera_clint(clint: float) -> dict:
+def opera_clint(clint: float, *, conf_index: float | None = None, ad_in_domain: bool | None = None) -> dict:
+    # OPERA's per-endpoint AD/confidence lives in uncertainty.extra keyed by the endpoint name.
+    extra: dict = {}
+    if conf_index is not None:
+        extra["Clint_conf_index"] = conf_index
+    if ad_in_domain is not None:
+        extra["Clint_ad_in_domain"] = ad_in_domain
     return {"model": ModelName.opera, "endpoint_values": {"Clint": clint},
-            "uncertainty": {"conf_index": 0.7, "extra": {}}, "raw": {}, "provenance": PROV}
+            "uncertainty": {"extra": extra}, "raw": {}, "provenance": PROV}
 
 
 def admet_ai(hepatocyte: float | None = None, microsome: float | None = None) -> dict:
@@ -39,92 +48,92 @@ def admet_ai(hepatocyte: float | None = None, microsome: float | None = None) ->
             "uncertainty": None, "raw": {}, "provenance": PROV}
 
 
-def pksmart(cl: float, *, fold_error=None, low=None, high=None, with_uncertainty=True) -> dict:
+def pksmart(cl: float, *, low=None, high=None, ad_in_domain=None, with_uncertainty=True) -> dict:
     unc = None
     if with_uncertainty:
-        unc = {"fold_error_low": low, "fold_error_high": high, "extra": {"cl_fold_error": fold_error}}
+        unc = {"fold_error_low": low, "fold_error_high": high, "ad_in_domain": ad_in_domain, "extra": {}}
     return {"model": ModelName.pksmart, "endpoint_values": {"CL_mL_min_kg": cl, "VDss_L_kg": 3.0},
             "uncertainty": unc, "raw": {}, "provenance": PROV}
 
 
 def _feature(mol, name):
-    f = next(f for f in mol.features if f.feature == name)
-    return f
-
-
-def _src(feature, model):
-    return next(s for s in feature.sources if s.model == model)
+    return next(f for f in mol.features if f.feature == name)
 
 
 # ------------------------------------------------------- hepatocyte_clint: trained fusion spec
 def test_hepatocyte_clint_gathers_both_sources_with_harmonized_values():
     # The aggregator's job: gather OPERA Clint + ADMET-AI hepatocyte on the SAME units. The SCORE is now
-    # produced by the trained fusion spec (exact value tested in tests/test_fusion.py), so assert the
-    # sources are preserved with their harmonized values and a calibrated score + interval exist - not the
-    # raw mean/std.
+    # produced by the trained fusion spec (exact value tested in tests/test_fusion.py), so assert the reads
+    # are preserved with their harmonized values and a calibrated score + interval exist.
     f = _feature(aggregate({"m": [opera_clint(8.0), admet_ai(hepatocyte=12.0)]}).molecules[0],
                  HEPATOCYTE_CLINT)
-    assert f.n_sources == 2
-    assert {s.model for s in f.sources} == {"opera", "admet_ai"}
-    assert _src(f, "opera").value == 8.0 and _src(f, "admet_ai").value == 12.0  # raw sources preserved
-    assert f.score is not None and f.uncertainty is not None  # trained -> calibrated CLint + conformal interval
+    assert f.reads == {"opera": 8.0, "admet_ai": 12.0}   # harmonized reads preserved
+    assert f.score is not None and f.interval is not None  # trained -> calibrated CLint + conformal interval
     assert f.unit == HEPATOCYTE_CLINT_UNIT
+
+
+def test_hepatocyte_opera_ad_signals_land_in_uncertainty():
+    f = _feature(aggregate({"m": [opera_clint(8.0, conf_index=0.72, ad_in_domain=True),
+                                  admet_ai(hepatocyte=12.0)]}).molecules[0], HEPATOCYTE_CLINT)
+    assert f.uncertainty["opera_conf_index"] == 0.72
+    assert f.uncertainty["opera_ad_in_domain"] is True
 
 
 def test_hepatocyte_single_admet_ai_source_yields_calibrated_score():
     f = _feature(aggregate({"m": [admet_ai(hepatocyte=12.0)]}).molecules[0], HEPATOCYTE_CLINT)
-    assert f.n_sources == 1 and _src(f, "admet_ai").value == 12.0
-    assert f.score is not None and f.uncertainty is not None
+    assert f.reads == {"admet_ai": 12.0}
+    assert f.score is not None and f.interval is not None
 
 
 def test_hepatocyte_absent_yields_null_score():
     f = _feature(aggregate({"m": [pksmart(50.0)]}).molecules[0], HEPATOCYTE_CLINT)
-    assert f.score is None and f.uncertainty is None and f.n_sources == 0
+    assert f.score is None and f.interval is None and f.reads == {}
 
 
-# ------------------------------------------------------- systemic_cl: single PKSmart read + fold-error note
-def test_systemic_cl_carries_value_and_fold_error_note():
-    f = _feature(aggregate({"m": [pksmart(89.6, fold_error=2.4, low=37.3, high=215.0)]}).molecules[0],
+# ------------------------------------------------------- systemic_cl: single PKSmart read + fold-error signal
+def test_systemic_cl_carries_value_and_fold_error_signal():
+    f = _feature(aggregate({"m": [pksmart(89.6, low=37.3, high=215.0, ad_in_domain=True)]}).molecules[0],
                  SYSTEMIC_CL)
-    s = _src(f, "pksmart")
-    assert s.value == 89.6
-    assert f.score == 89.6 and f.uncertainty is None and f.n_sources == 1
+    assert f.reads == {"pksmart": 89.6}
+    assert f.score == 89.6 and f.interval is None   # untrained -> equal-weight passthrough, no interval
     assert f.unit == SYSTEMIC_CL_UNIT
-    assert "low=37.3" in s.note and "high=215.0" in s.note and "cl_fold=2.4" in s.note
+    # native fold-error surfaced in uncertainty (was previously a note string)
+    assert f.uncertainty["pksmart_fold_error_low"] == 37.3
+    assert f.uncertainty["pksmart_fold_error_high"] == 215.0
+    assert f.uncertainty["pksmart_ad_in_domain"] is True
 
 
-def test_systemic_cl_note_survives_missing_uncertainty():
+def test_systemic_cl_survives_missing_uncertainty():
     f = _feature(aggregate({"m": [pksmart(40.0, with_uncertainty=False)]}).molecules[0], SYSTEMIC_CL)
-    s = _src(f, "pksmart")
-    assert s.value == 40.0
-    assert "low=None" in s.note and "high=None" in s.note and "cl_fold=None" in s.note
+    assert f.reads == {"pksmart": 40.0}
+    assert f.score == 40.0 and f.uncertainty == {}   # no native signals when the record has no uncertainty
 
 
 def test_systemic_cl_absent_yields_null_score():
     f = _feature(aggregate({"m": [opera_clint(8.0)]}).molecules[0], SYSTEMIC_CL)
-    assert f.score is None and f.n_sources == 0
+    assert f.score is None and f.reads == {}
 
 
 # ------------------------------------------------------- microsomal_clint: single ADMET-AI read
 def test_microsomal_clint_is_single_admet_ai_read():
     # trained single-source spec: the admet_ai microsome read is calibrated to Biogen HLM CLint (exact
-    # value tested in tests/test_fusion.py), so assert the source is gathered with its harmonized value and
-    # a calibrated score + conformal interval exist - not the raw 30.0 passthrough.
+    # value tested in tests/test_fusion.py), so assert the read is gathered with its harmonized value and
+    # a calibrated score + conformal interval exist.
     f = _feature(aggregate({"m": [admet_ai(microsome=30.0)]}).molecules[0], MICROSOMAL_CLINT)
-    assert f.score is not None and f.uncertainty is not None and f.n_sources == 1
+    assert f.reads == {"admet_ai": 30.0}
+    assert f.score is not None and f.interval is not None
     assert f.unit == MICROSOMAL_CLINT_UNIT
-    assert _src(f, "admet_ai").value == 30.0
 
 
 def test_microsomal_clint_absent_yields_null_score():
     f = _feature(aggregate({"m": [opera_clint(8.0)]}).molecules[0], MICROSOMAL_CLINT)
-    assert f.score is None and f.n_sources == 0
+    assert f.score is None and f.reads == {}
 
 
 # ------------------------------------------------------- decomposition: never merged across units
 def test_three_decomposed_features_with_distinct_units():
     recs = [opera_clint(8.0), admet_ai(hepatocyte=12.0, microsome=30.0),
-            pksmart(89.6, fold_error=2.4, low=37.3, high=215.0)]
+            pksmart(89.6, low=37.3, high=215.0)]
     mol = aggregate({"FTO-43": recs}).molecules[0]
     names = [f.feature for f in mol.features]
     assert names == [HEPATOCYTE_CLINT, SYSTEMIC_CL, MICROSOMAL_CLINT]
@@ -135,11 +144,11 @@ def test_three_decomposed_features_with_distinct_units():
     assert units[MICROSOMAL_CLINT] == "uL/min/mg (up = faster clearance)"
     # hepatocyte fused the two same-unit reads; the microsomal read stayed in its OWN feature.
     hep = _feature(mol, HEPATOCYTE_CLINT)
-    assert hep.n_sources == 2
-    assert _feature(mol, MICROSOMAL_CLINT).n_sources == 1
+    assert hep.reads == {"opera": 8.0, "admet_ai": 12.0}
+    assert _feature(mol, MICROSOMAL_CLINT).reads == {"admet_ai": 30.0}
     # ADMET-AI hepatocyte (12) and microsome (30) were never merged: only 8.0 + 12.0 fed the hepatocyte
     # feature; the microsome value (30) never entered it.
-    assert {s.value for s in hep.sources} == {8.0, 12.0}
+    assert set(hep.reads.values()) == {8.0, 12.0}
     assert hep.score is not None
 
 
@@ -151,7 +160,7 @@ def test_endpoint_identity_and_uniform_shape():
     assert mol.endpoint == Endpoint.clearance and mol.mol_id == "m"
     assert set(type(mol).model_fields) == {"endpoint", "mol_id", "features"}
     assert set(type(mol.features[0]).model_fields) == {
-        "feature", "score", "uncertainty", "unit", "n_sources", "sources"}
+        "feature", "score", "unit", "interval", "reads", "raw", "uncertainty"}
 
 
 def test_multiple_molecules_independent():

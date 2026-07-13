@@ -4,15 +4,19 @@ Synthetic ``OutputRecord``-shaped inputs (laptop, core env - no box, no GPU). Th
 - metabolism is ONLY site-of-metabolism; hepatic CLint (stability) is the clearance endpoint's, not
   duplicated here (so admet_ai's clearance heads are ignored by this aggregator);
 - site_of_metabolism is scored on the FAME3R ``max_som_probability`` alone; SMARTCyp's ``top_som_score``
-  is carried as a concordance Source with ``value=None`` (opposite direction, incompatible kJ/mol scale)
-  and is NEVER averaged into the probability (F-2);
+  is carried with ``value=None`` (opposite direction, incompatible kJ/mol scale) - its native Score lives
+  in ``f.raw["smartcyp"]`` and is NEVER averaged into the probability (F-2);
+- FAME3R's native AD reliability (``ad_index`` + mean FAME3RScore) rides along in ``f.uncertainty``;
 - the per-atom tables stay in each model's ``rec.raw`` - not copied into a Source.
+
+Output shape (per feature): score, unit, interval[low,high], reads{model:harmonized}, raw{model:native},
+uncertainty{model_type:value}.
 """
 
 from __future__ import annotations
 
 from core.models import Endpoint, ModelName
-from endpoints.metabolism.aggregate import SMARTCYP_SCORE_UNIT, SOM, aggregate
+from endpoints.metabolism.aggregate import SOM, aggregate
 
 PROV = {"model": "test"}
 
@@ -24,11 +28,13 @@ def admet_ai(*, hepatocyte: float | None = None) -> dict:
             "uncertainty": None, "raw": {}, "provenance": PROV}
 
 
-def fame3r(max_prob: float, top_atom: int = 3) -> dict:
+def fame3r(max_prob: float, top_atom: int = 3,
+           ad_index: float | None = None, score_mean: float | None = None) -> dict:
     """A FAME3R record: scalar max probability + top atom in endpoint_values; per-atom table in raw."""
     return {"model": ModelName.fame3r,
             "endpoint_values": {"max_som_probability": max_prob, "top_som_atom_index": top_atom},
-            "uncertainty": None, "raw": {"atoms": [{"atom_index": top_atom, "som_probability": max_prob}]},
+            "uncertainty": {"ad_index": ad_index, "extra": {"fame3r_score_mean": score_mean}},
+            "raw": {"atoms": [{"atom_index": top_atom, "som_probability": max_prob}]},
             "provenance": PROV}
 
 
@@ -44,10 +50,6 @@ def _feat(mol, name):
     return next(f for f in mol.features if f.feature == name)
 
 
-def _src(feature, model):
-    return next(s for s in feature.sources if s.model == model)
-
-
 # -------------------------------------------------------------------------- metabolism is SoM only
 def test_only_one_feature_and_clearance_heads_are_ignored():
     mol = aggregate({"m": [admet_ai(hepatocyte=35.0), fame3r(0.9)]}).molecules[0]
@@ -58,38 +60,39 @@ def test_only_one_feature_and_clearance_heads_are_ignored():
 # -------------------------------------------------------------------------- site of metabolism (F-2)
 def test_som_scored_on_fame3r_probability_alone():
     f = _feat(aggregate({"m": [fame3r(0.95, top_atom=3)]}).molecules[0], SOM)
-    assert f.score == 0.95 and f.uncertainty is None and f.n_sources == 1
-    src = _src(f, "fame3r")
-    assert src.value == 0.95 and "top atom idx=3" in src.note
+    assert f.score == 0.95 and f.interval is None
+    assert f.reads == {"fame3r": 0.95}
+
+
+def test_fame3r_ad_reliability_rides_along_as_native_uncertainty():
+    f = _feat(aggregate({"m": [fame3r(0.95, ad_index=0.82, score_mean=0.31)]}).molecules[0], SOM)
+    assert f.uncertainty["fame3r_ad_index"] == 0.82
+    assert f.uncertainty["fame3r_fame3r_score_mean"] == 0.31
 
 
 def test_smartcyp_carried_as_concordance_not_fused():
     """SMARTCyp's Score is on a different kJ/mol scale (opposite direction): value=None, never averaged."""
     f = _feat(aggregate({"m": [fame3r(0.95, top_atom=3), smartcyp(20.0, top_atom=3)]}).molecules[0], SOM)
     assert f.score == 0.95            # SMARTCyp's 20.0 kJ/mol Score does NOT move the FAME3R probability
-    assert f.n_sources == 2
-    sc = _src(f, "smartcyp")
-    assert sc.value is None
-    assert (sc.raw, sc.raw_unit) == (20.0, SMARTCYP_SCORE_UNIT)
-    assert "not fused" in sc.note and "top SoM atom idx=3" in sc.note
+    assert f.reads == {"fame3r": 0.95}       # smartcyp value=None never becomes a read
+    assert f.raw["smartcyp"] == 20.0         # its native Score lives in raw
 
 
 def test_smartcyp_alone_has_no_score():
     f = _feat(aggregate({"m": [smartcyp(15.0, top_atom=1)]}).molecules[0], SOM)
-    assert f.score is None and f.uncertainty is None
-    assert f.n_sources == 1 and _src(f, "smartcyp").value is None
+    assert f.score is None and f.interval is None
+    assert f.reads == {} and f.raw["smartcyp"] == 15.0   # carried in raw, no read, no score
 
 
 def test_no_som_source_yields_empty_feature():
     f = _feat(aggregate({"m": [admet_ai(hepatocyte=5.0)]}).molecules[0], SOM)
-    assert f.n_sources == 0 and f.score is None
+    assert f.reads == {} and f.raw == {} and f.score is None
 
 
-def test_per_atom_tables_are_not_copied_into_sources():
+def test_per_atom_tables_are_not_copied_into_reads_or_raw():
     f = _feat(aggregate({"m": [fame3r(0.9), smartcyp(20.0)]}).molecules[0], SOM)
-    for s in f.sources:
-        assert not isinstance(s.value, (list, tuple))
-        assert not isinstance(s.raw, (list, tuple))
+    for v in list(f.reads.values()) + list(f.raw.values()):
+        assert not isinstance(v, (list, tuple))
 
 
 # -------------------------------------------------------------------------- shape / plumbing
@@ -99,7 +102,7 @@ def test_uniform_shape():
     mol = res.molecules[0]
     assert set(type(mol).model_fields) == {"endpoint", "mol_id", "features"}
     assert set(type(mol.features[0]).model_fields) == {
-        "feature", "score", "uncertainty", "unit", "n_sources", "sources"}
+        "feature", "score", "unit", "interval", "reads", "raw", "uncertainty"}
 
 
 def test_multiple_molecules_independent():
@@ -123,4 +126,4 @@ def test_errored_record_does_not_crash():
                "endpoint_values": {"max_som_probability": None, "top_som_atom_index": None},
                "uncertainty": None, "raw": {"error": "RDKit could not parse SMILES"}, "provenance": PROV}
     f = _feat(aggregate({"bad": [errored]}).molecules[0], SOM)
-    assert f.n_sources == 0 and f.score is None
+    assert f.reads == {} and f.score is None

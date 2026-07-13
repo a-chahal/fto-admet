@@ -31,9 +31,11 @@ from core.aggregate import (
     Feature,
     MoleculeVerdict,
     Source,
-    ensemble,
+    as_output_record,
     normalize_molecules,
+    num,
 )
+from core.fusion import build_feature
 from core.models import Endpoint, ModelName
 from core.schemas import OutputRecord
 
@@ -48,24 +50,12 @@ SOM_UNIT = "max per-atom P(SoM) [0,1] (up = more labile)"
 SMARTCYP_SCORE_UNIT = "kJ/mol SMARTCyp Score"
 
 
-def _as_output_record(rec: Any) -> OutputRecord:
-    return rec if isinstance(rec, OutputRecord) else OutputRecord.model_validate(rec)
-
-
-def _num(value: Any) -> float | None:
-    """Coerce to a finite float, or ``None`` (a source with no numeric value never enters the mean)."""
-    try:
-        f = float(value)
-    except (TypeError, ValueError):
-        return None
-    return f if f == f and f not in (float("inf"), float("-inf")) else None
-
-
 def _som_feature(records: Sequence[OutputRecord]) -> Feature:
     """Site of metabolism: FAME3R max probability is scored; SMARTCyp top Score is carried, NOT fused (F-2).
 
-    FAME3R's ``max_som_probability`` is the only numeric source (the score). SMARTCyp's ``top_som_score``
-    is on a different kJ/mol scale running the opposite direction, so it joins as a concordance Source with
+    FAME3R's ``max_som_probability`` is the only numeric source (the score); it carries its native AD
+    reliability (``ad_index`` + mean FAME3RScore) in ``native``. SMARTCyp's ``top_som_score`` is on a
+    different kJ/mol scale running the opposite direction, so it joins as a concordance Source with
     ``value=None`` (its native Score in ``raw``) and is never averaged into the probability. The per-atom
     tables stay in each model's ``rec.raw``.
     """
@@ -73,27 +63,22 @@ def _som_feature(records: Sequence[OutputRecord]) -> Feature:
     for rec in records:
         ev = rec.endpoint_values or {}
         if rec.model == ModelName.fame3r:
-            prob = _num(ev.get(FAME3R_MAX_PROB))
+            prob = num(ev.get(FAME3R_MAX_PROB))
             if prob is not None:
-                sources.append(Source(
-                    model="fame3r", value=prob,
-                    note=f"max per-atom P(SoM); top atom idx={ev.get(FAME3R_TOP_ATOM)}",
-                ))
+                u = rec.uncertainty
+                native = ({"ad_index": u.ad_index,
+                           "fame3r_score_mean": (u.extra or {}).get("fame3r_score_mean")} if u else {})
+                sources.append(Source(model="fame3r", value=prob, native=native))
         elif rec.model == ModelName.smartcyp:
-            score = _num(ev.get(SMARTCYP_TOP_SCORE))
+            score = num(ev.get(SMARTCYP_TOP_SCORE))
             if score is not None:
-                sources.append(Source(
-                    model="smartcyp", value=None, raw=score, raw_unit=SMARTCYP_SCORE_UNIT,
-                    note=(f"SMARTCyp top SoM atom idx={ev.get(SMARTCYP_TOP_ATOM)}; lower Score = more "
-                          "likely SoM (different scale, not fused)"),
-                ))
-    score, uncertainty = ensemble([s.value for s in sources], [s.weight for s in sources])
-    return Feature(feature=SOM, score=score, uncertainty=uncertainty, unit=SOM_UNIT,
-                   n_sources=len(sources), sources=sources)
+                sources.append(Source(model="smartcyp", value=None, raw=score,
+                                      raw_unit=SMARTCYP_SCORE_UNIT))
+    return build_feature(Endpoint.metabolism, SOM, SOM_UNIT, sources)
 
 
 def _molecule(mol_id: str, records: Sequence[Any]) -> MoleculeVerdict:
-    recs = [_as_output_record(r) for r in records]
+    recs = [as_output_record(r) for r in records]
     return MoleculeVerdict(endpoint=Endpoint.metabolism, mol_id=mol_id, features=[_som_feature(recs)])
 
 

@@ -86,14 +86,32 @@ def normalize_molecules(
 # --------------------------------------------------------------------------------------------------
 # The uniform output shape + the ensemble reducer (score = mean, uncertainty = std).
 # --------------------------------------------------------------------------------------------------
-class Source(BaseModel):
-    """One model's contribution to a feature.
+def as_output_record(rec: Any) -> Any:
+    """Coerce a dict or ``OutputRecord`` to an ``OutputRecord`` (shared by every aggregator; was duplicated)."""
+    from core.schemas import OutputRecord
 
-    ``value`` is the model's read HARMONIZED onto the feature's common scale (this is what feeds the
-    score/uncertainty). ``raw`` / ``raw_unit`` are the model's NATIVE value before harmonization, kept for
-    transparency (``raw`` stays ``None`` when no transform was applied - ``value`` is already native).
-    ``weight`` is for the (future) weighted mean/std; equal (1.0) for now. ``note`` is a short free-text
-    marker (e.g. an error string or ``"N/A"`` when the model ran but did not report this feature).
+    return rec if isinstance(rec, OutputRecord) else OutputRecord.model_validate(rec)
+
+
+def num(value: Any) -> float | None:
+    """A finite float, or ``None`` (bools are flags, not measurements). Shared by every aggregator."""
+    if isinstance(value, bool):
+        return None
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return None
+    return f if math.isfinite(f) else None
+
+
+class Source(BaseModel):
+    """One model's contribution to a feature - an INTERNAL carrier, projected into the ``Feature`` output.
+
+    ``value`` is the model's read HARMONIZED onto the feature's common scale (what feeds the score);
+    ``raw`` / ``raw_unit`` are the model's NATIVE value before harmonization (kept for provenance);
+    ``native`` holds the model's own uncertainty / applicability-domain / confidence signals keyed by TYPE
+    (e.g. ``{"conf_index": 0.8, "ad_in_domain": True}``) - the model prefix is added when projected onto the
+    feature. This object does not appear in the output; ``build_feature`` flattens a list of them.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -102,26 +120,29 @@ class Source(BaseModel):
     value: Scalar
     raw: Scalar = None
     raw_unit: str | None = None
+    native: dict[str, Scalar] = Field(default_factory=dict)
     weight: float = 1.0
-    note: str | None = None
 
 
 class Feature(BaseModel):
-    """One thing an endpoint measures: the ensemble score + its disagreement uncertainty + the raw sources.
+    """One thing an endpoint measures - the whole per-molecule verdict, in four flat parts:
 
-    ``score`` is the (weighted, equal-for-now) mean of the numeric source ``value``s; ``uncertainty`` is the
-    weighted std over the same values (``None`` for a single source - disagreement is undefined for one).
-    Both are ``None`` when no source reported a numeric value. ``unit`` names the common scale ``score`` is on.
+    - ``score`` (on ``unit``) - the fused/calibrated answer (or an equal-weight mean when untrained);
+    - ``interval`` - the conformal ``[low, high]`` prediction bounds (``None`` when untrained or no score);
+    - ``reads`` - ``{model: harmonized read}`` on the feature's scale (shows cross-model agreement);
+    - ``raw`` - ``{model: native value}`` where it differs from the read (provenance);
+    - ``uncertainty`` - ``{"model_type": value}`` native AD / confidence / fold-error / aleatoric-epistemic.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     feature: str
     score: float | None = None
-    uncertainty: float | None = None
     unit: str | None = None
-    n_sources: int = 0
-    sources: list[Source] = Field(default_factory=list)
+    interval: tuple[float, float] | None = None
+    reads: dict[str, Scalar] = Field(default_factory=dict)
+    raw: dict[str, Scalar] = Field(default_factory=dict)
+    uncertainty: dict[str, Scalar] = Field(default_factory=dict)
 
 
 class MoleculeVerdict(BaseModel):

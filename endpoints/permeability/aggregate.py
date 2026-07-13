@@ -11,23 +11,24 @@ never be averaged together:
     passive_permeability    admet_ai Caco2_Wang (log Papp),             TWO incompatible scales measuring ONE
                             admet_ai PAMPA_NCATS (probability)          entity (does it cross a membrane). No
                                                                         clean common axis -> score DEFERRED
-                                                                        (None); the two native reads are
-                                                                        carried as sources.
+                                                                        (None); the reads live upstream in the
+                                                                        admet_ai record, pending calibration.
     intestinal_absorption   admet_ai HIA_Hou (probability),             ONE entity (does it get absorbed
                             boiled_egg HIA_boiled_egg (bool)            orally) on a probability + a boolean.
                                                                         No clean common axis -> score DEFERRED
-                                                                        (None); both native reads carried.
+                                                                        (None).
     pgp_efflux              admet_ai Pgp_Broccatelli via pgp.py         efflux liability, a DIFFERENT axis
-                                                                        (F-4) -> single-source value.
+                                                                        (F-4) -> single-source scored value.
 
 Why the first two features carry no score yet: Caco2 log Papp (a log-scale flux) and PAMPA (a trained
 probability) both predict passive membrane permeability, but on scales with no scientifically clean
 common axis; the same holds for HIA_Hou (a probability) and BOILED-Egg (a boolean) on absorption.
 Averaging either pair would need an arbitrary rescale, so - per the "score only clean fusions" policy -
-the fused score is DEFERRED until each source is calibrated to a shared experimental target; the native
-reads are all carried (real values shown), ready for that calibration. P-gp efflux is a third separate
-entity (F-4). This whole endpoint may be partly moot for FTO-43 if delivery is intratumoral /
-osmotic-pump rather than oral (IO_SPEC §1 #23); it is a triage read, not a gate.
+the fused score is DEFERRED until each source is calibrated to a shared experimental target. Each source
+is gathered with ``value=None`` so ``build_feature`` yields ``score=None`` (no fabricated mean of
+incompatible scales). P-gp efflux is a third separate entity (F-4). This whole endpoint may be partly moot
+for FTO-43 if delivery is intratumoral / osmotic-pump rather than oral (IO_SPEC §1 #23); it is a triage
+read, not a gate.
 """
 
 from __future__ import annotations
@@ -40,9 +41,11 @@ from core.aggregate import (
     Feature,
     MoleculeVerdict,
     Source,
-    ensemble,
+    as_output_record,
     normalize_molecules,
+    num,
 )
+from core.fusion import build_feature
 from core.models import Endpoint, ModelName
 from core.schemas import OutputRecord
 from endpoints.distribution.pgp.pgp import extract_pgp
@@ -59,58 +62,40 @@ ABSORPTION = "intestinal_absorption"
 EFFLUX = "pgp_efflux"
 
 
-def _as_output_record(rec: Any) -> OutputRecord:
-    return rec if isinstance(rec, OutputRecord) else OutputRecord.model_validate(rec)
-
-
-def _num(value: Any) -> float | None:
-    """Coerce to a finite float, or ``None``. Rejects bool (a flag is not a measurement)."""
-    if isinstance(value, bool):
-        return None
-    try:
-        f = float(value)
-    except (TypeError, ValueError):
-        return None
-    return f if f == f and f not in (float("inf"), float("-inf")) else None
-
-
 def _passive_feature(records: Sequence[OutputRecord]) -> Feature:
-    """Passive permeability: Caco2 log Papp + PAMPA probability, one entity, score DEFERRED (mixed axis)."""
+    """Passive permeability: Caco2 log Papp + PAMPA probability, one entity, score DEFERRED (mixed axis).
+
+    Both reads are gathered as ``value=None`` sources so no arbitrary mean of the two incompatible scales
+    is fabricated; ``build_feature`` yields ``score=None`` until the sources are calibrated.
+    """
     sources: list[Source] = []
     for rec in records:
         if rec.model != ModelName.admet_ai:
             continue
         ev = rec.endpoint_values or {}
-        caco2 = _num(ev.get(CACO2_KEY))
-        if caco2 is not None:
-            sources.append(Source(model="admet_ai", value=caco2,
-                                  note="Caco2 log Papp (up = more permeable)"))
-        pampa = _num(ev.get(PAMPA_KEY))
-        if pampa is not None:
-            sources.append(Source(model="admet_ai", value=pampa,
-                                  note="PAMPA P(permeable)"))
-    # Mixed scales, one entity: no clean common axis -> score DEFERRED until calibration.
-    return Feature(feature=PASSIVE, score=None, uncertainty=None, unit=None,
-                   n_sources=len(sources), sources=sources)
+        if num(ev.get(CACO2_KEY)) is not None:
+            sources.append(Source(model="admet_ai", value=None))
+        if num(ev.get(PAMPA_KEY)) is not None:
+            sources.append(Source(model="admet_ai", value=None))
+    return build_feature(Endpoint.permeability, PASSIVE, None, sources)
 
 
 def _absorption_feature(records: Sequence[OutputRecord]) -> Feature:
-    """Intestinal absorption: HIA_Hou probability + BOILED-Egg boolean, one entity, score DEFERRED (mixed axis)."""
+    """Intestinal absorption: HIA_Hou probability + BOILED-Egg boolean, one entity, score DEFERRED (mixed axis).
+
+    Both reads are gathered as ``value=None`` sources (probability + boolean have no clean common axis), so
+    ``build_feature`` yields ``score=None`` until calibration.
+    """
     sources: list[Source] = []
     for rec in records:
         ev = rec.endpoint_values or {}
         if rec.model == ModelName.admet_ai:
-            v = _num(ev.get(HIA_HOU_KEY))
-            if v is not None:
-                sources.append(Source(model="admet_ai", value=v, note="P(HIA absorbed)"))
+            if num(ev.get(HIA_HOU_KEY)) is not None:
+                sources.append(Source(model="admet_ai", value=None))
         elif rec.model == ModelName.boiled_egg:
-            b = ev.get(HIA_BOILED_EGG_KEY)
-            if isinstance(b, bool):
-                sources.append(Source(model="boiled_egg", value=b,
-                                      note="in-white point-in-polygon (True = absorbed)"))
-    # Mixed scales (probability + boolean), one entity: no clean common axis -> score DEFERRED.
-    return Feature(feature=ABSORPTION, score=None, uncertainty=None, unit=None,
-                   n_sources=len(sources), sources=sources)
+            if isinstance(ev.get(HIA_BOILED_EGG_KEY), bool):
+                sources.append(Source(model="boiled_egg", value=None))
+    return build_feature(Endpoint.permeability, ABSORPTION, None, sources)
 
 
 def _efflux_feature(records: Sequence[OutputRecord]) -> Feature:
@@ -119,16 +104,13 @@ def _efflux_feature(records: Sequence[OutputRecord]) -> Feature:
     for rec in records:
         pgp = extract_pgp(rec)
         if pgp.value is not None:
-            sources.append(Source(model=pgp.source_model or "admet_ai", value=pgp.value,
-                                  note=f"P-gp efflux via {pgp.source_key}"))
-    score, uncertainty = ensemble([s.value for s in sources], [s.weight for s in sources])
-    return Feature(feature=EFFLUX, score=score, uncertainty=uncertainty,
-                   unit="P(P-gp substrate) [0,1] (up = more efflux liability)",
-                   n_sources=len(sources), sources=sources)
+            sources.append(Source(model=pgp.source_model or "admet_ai", value=pgp.value))
+    return build_feature(Endpoint.permeability, EFFLUX,
+                         "P(P-gp substrate) [0,1] (up = more efflux liability)", sources)
 
 
 def _molecule(mol_id: str, records: Sequence[Any]) -> MoleculeVerdict:
-    recs = [_as_output_record(r) for r in records]
+    recs = [as_output_record(r) for r in records]
     features = [_passive_feature(recs), _absorption_feature(recs), _efflux_feature(recs)]
     return MoleculeVerdict(endpoint=Endpoint.permeability, mol_id=mol_id, features=features)
 

@@ -1,0 +1,1146 @@
+{
+  "smiles": "CC(C)NCC(O)COc1cccc2ccccc12",
+  "mol_id": "propranolol",
+  "endpoints": {
+    "triage": {
+      "models_run": [
+        "admet_ai"
+      ],
+      "failures": [],
+      "verdict": {
+        "mol_id": "propranolol",
+        "present": true,
+        "values": {
+          "molecular_weight": 259.34900000000005,
+          "logP": 2.5775000000000006,
+          "hydrogen_bond_acceptors": 3.0,
+          "hydrogen_bond_donors": 2.0,
+          "Lipinski": 4.0,
+          "QED": 0.8375057924076362,
+          "stereo_centers": 1.0,
+          "tpsa": 41.489999999999995,
+          "PAINS_alert": 0.0,
+          "BRENK_alert": 0.0,
+          "NIH_alert": 0.0,
+          "AMES": 0.1763363480567932,
+          "BBB_Martins": 0.9503143429756165,
+          "Bioavailability_Ma": 0.9230948686599731,
+          "CYP1A2_Veith": 0.7475060224533081,
+          "CYP2C19_Veith": 0.10373959690332413,
+          "CYP2C9_Substrate_CarbonMangels": 0.1849733591079712,
+          "CYP2C9_Veith": 0.013932120986282825,
+          "CYP2D6_Substrate_CarbonMangels": 0.7329272031784058,
+          "CYP2D6_Veith": 0.6560152173042297,
+          "CYP3A4_Substrate_CarbonMangels": 0.37513309717178345,
+          "CYP3A4_Veith": 0.03748486563563347,
+          "Carcinogens_Lagunin": 0.2729150354862213,
+          "ClinTox": 0.17711785435676575,
+          "DILI": 0.19482634961605072,
+          "HIA_Hou": 0.9992011785507202,
+          "NR-AR-LBD": 0.004869474563747644,
+          "NR-AR": 0.02915930189192295,
+          "NR-AhR": 0.13174448907375336,
+          "NR-Aromatase": 0.008054072968661785,
+          "NR-ER-LBD": 0.006037653889507055,
+          "NR-ER": 0.07999105751514435,
+          "NR-PPAR-gamma": 0.001273973612114787,
+          "PAMPA_NCATS": 0.9121982455253601,
+          "Pgp_Broccatelli": 0.09155008941888809,
+          "SR-ARE": 0.033142752945423126,
+          "SR-ATAD5": 0.0020492947660386562,
+          "SR-HSE": 0.0036127609200775623,
+          "SR-MMP": 0.012687236070632935,
+          "SR-p53": 0.0039321440272033215,
+          "Skin_Reaction": 0.6331645250320435,
+          "hERG": 0.7828877568244934,
+          "Caco2_Wang": -4.659082412719727,
+          "Clearance_Hepatocyte_AZ": 30.387460708618164,
+          "Clearance_Microsome_AZ": -10.358133316040039,
+          "HydrationFreeEnergy_FreeSolv": -10.544540405273438,
+          "LD50_Zhu": 2.5028891563415527,
+          "Lipophilicity_AstraZeneca": 0.8241711854934692,
+          "PPBR_AZ": 66.00083923339844,
+          "Solubility_AqSolDB": -2.4514756202697754
+        }
+      },
+      "note": null
+    },
+    "herg": {
+      "models_run": [
+        "admet_ai",
+        "bayesherg",
+        "cardiotox_net",
+        "cardiogenai"
+      ],
+      "failures": [],
+      "verdict": {
+        "endpoint": "herg",
+        "mol_id": "propranolol",
+        "features": [
+          {
+            "feature": "hERG_block",
+            "score": 0.6802992622057596,
+            "uncertainty": 0.161668852734248,
+            "unit": "P(hERG block) [0,1] (up = more block, worse)",
+            "n_sources": 4,
+            "sources": [
+              {
+                "model": "admet_ai",
+                "value": 0.7828877568244934,
+                "raw": null,
+                "raw_unit": null,
+                "weight": 1.0,
+                "note": "P(hERG block)"
+              },
+              {
+                "model": "bayesherg",
+                "value": 0.8059567809104919,
+                "raw": null,
+                "raw_unit": null,
+                "weight": 1.0,
+                "note": "P(block); alea=0.1185818612575531 epis=0.03780854865908623"
+              },
+              {
+                "model": "cardiotox_net",
+                "value": 0.4520532488822937,
+                "raw": null,
+                "raw_unit": null,
+                "weight": 1.0,
+                "note": "P(block); Morgan onbits AD"
+              },
+              {
+                "model": "cardiogenai",
+                "value": null,
+                "raw": 5.679069995880127,
+                "raw_unit": "pIC50",
+                "weight": 1.0,
+                "note": "pIC50; placeholder pIC50->P(block) DEFERRED (F-1), excluded from score"
+              }
+            ]
+          },
+          {
+            "feature": "nav1.5_block",
+            "score": 7.293740272521973,
+            "uncertainty": null,
+            "unit": "pIC50 (up = more block)",
+            "n_sources": 1,
+            "sources": [
+              {
+                "model": "cardiogenai",
+                "value": 7.293740272521973,
+                "raw": null,
+                "raw_unit": null,
+                "weight": 1.0,
+                "note": "pIC50 (up = more block)"
+              }
+            ]
+          },
+          {
+            "feature": "cav1.2_block",
+            "score": 12.169829368591309,
+            "uncertainty": null,
+            "unit": "pIC50 (up = more block)",
+            "n_sources": 1,
+            "sources": [
+              {
+                "model": "cardiogenai",
+                "value": 12.169829368591309,
+                "raw": null,
+                "raw_unit": null,
+                "weight": 1.0,
+                "note": "pIC50 (up = more block)"
+              }
+            ]
+          }
+        ]
+      },
+      "note": null
+    },
+    "metabolism": {
+      "models_run": [
+        "admet_ai",
+        "smartcyp",
+        "fame3r"
+      ],
+      "failures": [],
+      "verdict": {
+        "endpoint": "metabolism",
+        "mol_id": "propranolol",
+        "features": [
+          {
+            "feature": "hepatocyte_clint",
+            "score": 30.387460708618164,
+            "uncertainty": null,
+            "unit": "uL/min/10^6 cells (up = faster clearance / less stable)",
+            "n_sources": 1,
+            "sources": [
+              {
+                "model": "admet_ai",
+                "value": 30.387460708618164,
+                "raw": null,
+                "raw_unit": null,
+                "weight": 1.0,
+                "note": "low-weight/qualitative (F-17)"
+              }
+            ]
+          },
+          {
+            "feature": "microsomal_clint",
+            "score": -10.358133316040039,
+            "uncertainty": null,
+            "unit": "uL/min/mg (up = faster clearance)",
+            "n_sources": 1,
+            "sources": [
+              {
+                "model": "admet_ai",
+                "value": -10.358133316040039,
+                "raw": null,
+                "raw_unit": null,
+                "weight": 1.0,
+                "note": "low-weight/qualitative (F-17)"
+              }
+            ]
+          },
+          {
+            "feature": "site_of_metabolism",
+            "score": 0.732,
+            "uncertainty": null,
+            "unit": "max per-atom P(SoM) [0,1] (up = more labile)",
+            "n_sources": 2,
+            "sources": [
+              {
+                "model": "smartcyp",
+                "value": null,
+                "raw": 33.42,
+                "raw_unit": "kJ/mol SMARTCyp Score",
+                "weight": 1.0,
+                "note": "SMARTCyp top SoM atom idx=1; lower Score = more likely SoM (different scale, not fused)"
+              },
+              {
+                "model": "fame3r",
+                "value": 0.732,
+                "raw": null,
+                "raw_unit": null,
+                "weight": 1.0,
+                "note": "max per-atom P(SoM); top atom idx=12"
+              }
+            ]
+          }
+        ]
+      },
+      "note": null
+    },
+    "clearance": {
+      "models_run": [
+        "admet_ai",
+        "pksmart",
+        "opera"
+      ],
+      "failures": [],
+      "verdict": {
+        "endpoint": "clearance",
+        "mol_id": "propranolol",
+        "features": [
+          {
+            "feature": "hepatocyte_clint",
+            "score": 20.958730354309083,
+            "uncertainty": 9.428730354309083,
+            "unit": "uL/min/10^6 cells (up = faster clearance)",
+            "n_sources": 2,
+            "sources": [
+              {
+                "model": "admet_ai",
+                "value": 30.387460708618164,
+                "raw": null,
+                "raw_unit": null,
+                "weight": 1.0,
+                "note": "ADMET-AI hepatocyte CLint (uL/min/10^6 cells); low-weight/qualitative (F-17)"
+              },
+              {
+                "model": "opera",
+                "value": 11.53,
+                "raw": null,
+                "raw_unit": null,
+                "weight": 1.0,
+                "note": "OPERA Clint (uL/min/10^6 cells)"
+              }
+            ]
+          },
+          {
+            "feature": "systemic_cl",
+            "score": 10.04493456953684,
+            "uncertainty": null,
+            "unit": "mL/min/kg (whole-body IV clearance, up = faster)",
+            "n_sources": 1,
+            "sources": [
+              {
+                "model": "pksmart",
+                "value": 10.04493456953684,
+                "raw": null,
+                "raw_unit": null,
+                "weight": 1.0,
+                "note": "fold-error low=2.837552138287243 high=35.55906837616042 cl_fold=3.54"
+              }
+            ]
+          },
+          {
+            "feature": "microsomal_clint",
+            "score": -10.358133316040039,
+            "uncertainty": null,
+            "unit": "uL/min/mg (up = faster clearance)",
+            "n_sources": 1,
+            "sources": [
+              {
+                "model": "admet_ai",
+                "value": -10.358133316040039,
+                "raw": null,
+                "raw_unit": null,
+                "weight": 1.0,
+                "note": "ADMET-AI microsomal CLint (uL/min/mg); low-weight/qualitative (F-17)"
+              }
+            ]
+          }
+        ]
+      },
+      "note": null
+    },
+    "distribution": {
+      "models_run": [
+        "admet_ai",
+        "bbb_score",
+        "boiled_egg",
+        "cns_mpo"
+      ],
+      "failures": [],
+      "verdict": {
+        "endpoint": "distribution",
+        "mol_id": "propranolol",
+        "features": [
+          {
+            "feature": "bbb_penetration",
+            "score": null,
+            "uncertainty": null,
+            "unit": null,
+            "n_sources": 3,
+            "sources": [
+              {
+                "model": "admet_ai",
+                "value": 0.9503143429756165,
+                "raw": null,
+                "raw_unit": null,
+                "weight": 1.0,
+                "note": "P(BBB penetrant), probability [0,1]"
+              },
+              {
+                "model": "bbb_score",
+                "value": 5.13,
+                "raw": null,
+                "raw_unit": null,
+                "weight": 1.0,
+                "note": "BBB Score, 0-6 desirability (up = penetrant)"
+              },
+              {
+                "model": "boiled_egg",
+                "value": true,
+                "raw": null,
+                "raw_unit": null,
+                "weight": 1.0,
+                "note": "in-yolk point-in-polygon, boolean (True = penetrant)"
+              }
+            ]
+          },
+          {
+            "feature": "cns_druglikeness",
+            "score": 5.0,
+            "uncertainty": null,
+            "unit": "0-6 desirability (up = more CNS-druglike)",
+            "n_sources": 1,
+            "sources": [
+              {
+                "model": "cns_mpo",
+                "value": 5.0,
+                "raw": null,
+                "raw_unit": null,
+                "weight": 1.0,
+                "note": "CNS MPO, developability desirability"
+              }
+            ]
+          },
+          {
+            "feature": "pgp_efflux",
+            "score": 0.09155008941888809,
+            "uncertainty": null,
+            "unit": "P(P-gp substrate) [0,1] (up = more efflux liability)",
+            "n_sources": 1,
+            "sources": [
+              {
+                "model": "admet_ai",
+                "value": 0.09155008941888809,
+                "raw": null,
+                "raw_unit": null,
+                "weight": 1.0,
+                "note": "P-gp efflux via Pgp_Broccatelli"
+              }
+            ]
+          }
+        ]
+      },
+      "note": null
+    },
+    "ppb": {
+      "models_run": [
+        "admet_ai",
+        "ochem_ppb",
+        "opera"
+      ],
+      "failures": [],
+      "verdict": {
+        "endpoint": "ppb",
+        "mol_id": "propranolol",
+        "features": [
+          {
+            "feature": "fraction_bound",
+            "score": 0.6798121950196564,
+            "uncertainty": 0.021689641721338117,
+            "unit": "fraction bound (0-1, up = more bound)",
+            "n_sources": 3,
+            "sources": [
+              {
+                "model": "admet_ai",
+                "value": 0.6600083923339843,
+                "raw": 66.00083923339844,
+                "raw_unit": "% bound",
+                "weight": 1.0,
+                "note": null
+              },
+              {
+                "model": "ochem_ppb",
+                "value": 0.6694281927249848,
+                "raw": 66.94281927249848,
+                "raw_unit": "% bound",
+                "weight": 1.0,
+                "note": null
+              },
+              {
+                "model": "opera",
+                "value": 0.71,
+                "raw": 0.29,
+                "raw_unit": "fraction unbound",
+                "weight": 1.0,
+                "note": null
+              }
+            ]
+          }
+        ]
+      },
+      "note": null
+    },
+    "solubility": {
+      "models_run": [
+        "admet_ai",
+        "sfi"
+      ],
+      "failures": [],
+      "verdict": {
+        "endpoint": "solubility",
+        "mol_id": "propranolol",
+        "features": [
+          {
+            "feature": "aqueous_solubility",
+            "score": -2.4514756202697754,
+            "uncertainty": null,
+            "unit": "log(mol/L) (up = more soluble)",
+            "n_sources": 1,
+            "sources": [
+              {
+                "model": "admet_ai",
+                "value": -2.4514756202697754,
+                "raw": null,
+                "raw_unit": null,
+                "weight": 1.0,
+                "note": "AqSolDB log S (up = more soluble)"
+              }
+            ]
+          },
+          {
+            "feature": "formulation_risk",
+            "score": 2.9667257744880438,
+            "uncertainty": null,
+            "unit": "Solubility Forecast Index (down = more soluble / lower formulation risk)",
+            "n_sources": 1,
+            "sources": [
+              {
+                "model": "sfi",
+                "value": 2.9667257744880438,
+                "raw": null,
+                "raw_unit": null,
+                "weight": 1.0,
+                "note": "different entity from thermodynamic solubility; not fused with logS"
+              }
+            ]
+          }
+        ]
+      },
+      "note": null
+    },
+    "lipophilicity": {
+      "models_run": [
+        "admet_ai",
+        "rdkit_crippen",
+        "opera",
+        "swissadme"
+      ],
+      "failures": [],
+      "verdict": {
+        "endpoint": "lipophilicity",
+        "mol_id": "propranolol",
+        "features": [
+          {
+            "feature": "logD",
+            "score": 0.8052127831819557,
+            "uncertainty": 0.2674554038388241,
+            "unit": "logD (log units, pH 7.4, up = more lipophilic)",
+            "n_sources": 4,
+            "sources": [
+              {
+                "model": "admet_ai",
+                "value": 0.8241711854934692,
+                "raw": null,
+                "raw_unit": null,
+                "weight": 1.0,
+                "note": "native logD7.4 head"
+              },
+              {
+                "model": "rdkit_crippen",
+                "value": 0.4145057619008199,
+                "raw": 2.5775000000000006,
+                "raw_unit": "logP",
+                "weight": 1.0,
+                "note": "logP -> logD via Henderson-Hasselbalch (pKa=9.56, base)"
+              },
+              {
+                "model": "opera",
+                "value": 1.17,
+                "raw": null,
+                "raw_unit": null,
+                "weight": 1.0,
+                "note": "native logD; conf_index=0.666"
+              },
+              {
+                "model": "swissadme",
+                "value": 0.8121741853335336,
+                "raw": 2.9751684234327143,
+                "raw_unit": "logP",
+                "weight": 1.0,
+                "note": "logP -> logD via Henderson-Hasselbalch (pKa=9.56, base)"
+              }
+            ]
+          }
+        ]
+      },
+      "note": null
+    },
+    "permeability": {
+      "models_run": [
+        "admet_ai",
+        "boiled_egg"
+      ],
+      "failures": [],
+      "verdict": {
+        "endpoint": "permeability",
+        "mol_id": "propranolol",
+        "features": [
+          {
+            "feature": "passive_permeability",
+            "score": null,
+            "uncertainty": null,
+            "unit": null,
+            "n_sources": 2,
+            "sources": [
+              {
+                "model": "admet_ai",
+                "value": -4.659082412719727,
+                "raw": null,
+                "raw_unit": null,
+                "weight": 1.0,
+                "note": "Caco2 log Papp (up = more permeable)"
+              },
+              {
+                "model": "admet_ai",
+                "value": 0.9121982455253601,
+                "raw": null,
+                "raw_unit": null,
+                "weight": 1.0,
+                "note": "PAMPA P(permeable)"
+              }
+            ]
+          },
+          {
+            "feature": "intestinal_absorption",
+            "score": null,
+            "uncertainty": null,
+            "unit": null,
+            "n_sources": 2,
+            "sources": [
+              {
+                "model": "admet_ai",
+                "value": 0.9992011785507202,
+                "raw": null,
+                "raw_unit": null,
+                "weight": 1.0,
+                "note": "P(HIA absorbed)"
+              },
+              {
+                "model": "boiled_egg",
+                "value": true,
+                "raw": null,
+                "raw_unit": null,
+                "weight": 1.0,
+                "note": "in-white point-in-polygon (True = absorbed)"
+              }
+            ]
+          },
+          {
+            "feature": "pgp_efflux",
+            "score": 0.09155008941888809,
+            "uncertainty": null,
+            "unit": "P(P-gp substrate) [0,1] (up = more efflux liability)",
+            "n_sources": 1,
+            "sources": [
+              {
+                "model": "admet_ai",
+                "value": 0.09155008941888809,
+                "raw": null,
+                "raw_unit": null,
+                "weight": 1.0,
+                "note": "P-gp efflux via Pgp_Broccatelli"
+              }
+            ]
+          }
+        ]
+      },
+      "note": null
+    },
+    "structural_alerts": {
+      "models_run": [
+        "pains_brenk"
+      ],
+      "failures": [],
+      "verdict": {
+        "endpoint": "structural_alerts",
+        "mol_id": "propranolol",
+        "features": [
+          {
+            "feature": "pains",
+            "score": 0.0,
+            "uncertainty": null,
+            "unit": "count of PAINS matches (0 = clean)",
+            "n_sources": 1,
+            "sources": [
+              {
+                "model": "pains_brenk",
+                "value": 0.0,
+                "raw": null,
+                "raw_unit": null,
+                "weight": 1.0,
+                "note": "no named matches"
+              }
+            ]
+          },
+          {
+            "feature": "brenk",
+            "score": 0.0,
+            "uncertainty": null,
+            "unit": "count of BRENK matches (0 = clean)",
+            "n_sources": 1,
+            "sources": [
+              {
+                "model": "pains_brenk",
+                "value": 0.0,
+                "raw": null,
+                "raw_unit": null,
+                "weight": 1.0,
+                "note": "no named matches"
+              }
+            ]
+          },
+          {
+            "feature": "nih",
+            "score": null,
+            "uncertainty": null,
+            "unit": "count of NIH alerts (0 = clean)",
+            "n_sources": 0,
+            "sources": []
+          }
+        ]
+      },
+      "note": null
+    },
+    "synthesizability": {
+      "models_run": [
+        "sascore",
+        "rascore"
+      ],
+      "failures": [],
+      "verdict": {
+        "endpoint": "synthesizability",
+        "mol_id": "propranolol",
+        "features": [
+          {
+            "feature": "synthetic_complexity",
+            "score": 2.2996622708541317,
+            "uncertainty": null,
+            "unit": "SAscore 1-10 (down = easier to synthesize)",
+            "n_sources": 1,
+            "sources": [
+              {
+                "model": "sascore",
+                "value": 2.2996622708541317,
+                "raw": null,
+                "raw_unit": null,
+                "weight": 1.0,
+                "note": "SAscore; lower = easier to synthesize"
+              }
+            ]
+          },
+          {
+            "feature": "route_findability",
+            "score": 0.9958412051200867,
+            "uncertainty": null,
+            "unit": "P(retrosynthesis route exists) [0,1] (up = easier)",
+            "n_sources": 1,
+            "sources": [
+              {
+                "model": "rascore",
+                "value": 0.9958412051200867,
+                "raw": null,
+                "raw_unit": null,
+                "weight": 1.0,
+                "note": "different entity from SAscore complexity"
+              }
+            ]
+          }
+        ]
+      },
+      "note": null
+    },
+    "toxicity": {
+      "models_run": [
+        "admet_ai",
+        "toxicophores"
+      ],
+      "failures": [],
+      "verdict": {
+        "endpoint": "toxicity",
+        "mol_id": "propranolol",
+        "features": [
+          {
+            "feature": "dili",
+            "score": 0.19482634961605072,
+            "uncertainty": null,
+            "unit": "P(dili) [0,1] (up = more toxic)",
+            "n_sources": 1,
+            "sources": [
+              {
+                "model": "admet_ai",
+                "value": 0.19482634961605072,
+                "raw": null,
+                "raw_unit": null,
+                "weight": 1.0,
+                "note": "P(DILI); ADMET-AI head"
+              }
+            ]
+          },
+          {
+            "feature": "ames_mutagenicity",
+            "score": 0.1763363480567932,
+            "uncertainty": null,
+            "unit": "P(ames_mutagenicity) [0,1] (up = more toxic)",
+            "n_sources": 1,
+            "sources": [
+              {
+                "model": "admet_ai",
+                "value": 0.1763363480567932,
+                "raw": null,
+                "raw_unit": null,
+                "weight": 1.0,
+                "note": "P(AMES); ADMET-AI head"
+              }
+            ]
+          },
+          {
+            "feature": "clinical_toxicity",
+            "score": 0.17711785435676575,
+            "uncertainty": null,
+            "unit": "P(clinical_toxicity) [0,1] (up = more toxic)",
+            "n_sources": 1,
+            "sources": [
+              {
+                "model": "admet_ai",
+                "value": 0.17711785435676575,
+                "raw": null,
+                "raw_unit": null,
+                "weight": 1.0,
+                "note": "P(ClinTox); ADMET-AI head"
+              }
+            ]
+          },
+          {
+            "feature": "carcinogenicity",
+            "score": 0.2729150354862213,
+            "uncertainty": null,
+            "unit": "P(carcinogenicity) [0,1] (up = more toxic)",
+            "n_sources": 1,
+            "sources": [
+              {
+                "model": "admet_ai",
+                "value": 0.2729150354862213,
+                "raw": null,
+                "raw_unit": null,
+                "weight": 1.0,
+                "note": "P(Carcinogens_Lagunin); ADMET-AI head"
+              }
+            ]
+          },
+          {
+            "feature": "skin_reaction",
+            "score": 0.6331645250320435,
+            "uncertainty": null,
+            "unit": "P(skin_reaction) [0,1] (up = more toxic)",
+            "n_sources": 1,
+            "sources": [
+              {
+                "model": "admet_ai",
+                "value": 0.6331645250320435,
+                "raw": null,
+                "raw_unit": null,
+                "weight": 1.0,
+                "note": "P(Skin_Reaction); ADMET-AI head"
+              }
+            ]
+          },
+          {
+            "feature": "herg_cardiotox",
+            "score": 0.7828877568244934,
+            "uncertainty": null,
+            "unit": "P(herg_cardiotox) [0,1] (up = more toxic)",
+            "n_sources": 1,
+            "sources": [
+              {
+                "model": "admet_ai",
+                "value": 0.7828877568244934,
+                "raw": null,
+                "raw_unit": null,
+                "weight": 1.0,
+                "note": "P(hERG); ADMET-AI head"
+              }
+            ]
+          },
+          {
+            "feature": "nr_ar",
+            "score": 0.02915930189192295,
+            "uncertainty": null,
+            "unit": "P(nr_ar) [0,1] (up = more toxic)",
+            "n_sources": 1,
+            "sources": [
+              {
+                "model": "admet_ai",
+                "value": 0.02915930189192295,
+                "raw": null,
+                "raw_unit": null,
+                "weight": 1.0,
+                "note": "P(NR-AR); ADMET-AI head"
+              }
+            ]
+          },
+          {
+            "feature": "nr_ar_lbd",
+            "score": 0.004869474563747644,
+            "uncertainty": null,
+            "unit": "P(nr_ar_lbd) [0,1] (up = more toxic)",
+            "n_sources": 1,
+            "sources": [
+              {
+                "model": "admet_ai",
+                "value": 0.004869474563747644,
+                "raw": null,
+                "raw_unit": null,
+                "weight": 1.0,
+                "note": "P(NR-AR-LBD); ADMET-AI head"
+              }
+            ]
+          },
+          {
+            "feature": "nr_ahr",
+            "score": 0.13174448907375336,
+            "uncertainty": null,
+            "unit": "P(nr_ahr) [0,1] (up = more toxic)",
+            "n_sources": 1,
+            "sources": [
+              {
+                "model": "admet_ai",
+                "value": 0.13174448907375336,
+                "raw": null,
+                "raw_unit": null,
+                "weight": 1.0,
+                "note": "P(NR-AhR); ADMET-AI head"
+              }
+            ]
+          },
+          {
+            "feature": "nr_aromatase",
+            "score": 0.008054072968661785,
+            "uncertainty": null,
+            "unit": "P(nr_aromatase) [0,1] (up = more toxic)",
+            "n_sources": 1,
+            "sources": [
+              {
+                "model": "admet_ai",
+                "value": 0.008054072968661785,
+                "raw": null,
+                "raw_unit": null,
+                "weight": 1.0,
+                "note": "P(NR-Aromatase); ADMET-AI head"
+              }
+            ]
+          },
+          {
+            "feature": "nr_er",
+            "score": 0.07999105751514435,
+            "uncertainty": null,
+            "unit": "P(nr_er) [0,1] (up = more toxic)",
+            "n_sources": 1,
+            "sources": [
+              {
+                "model": "admet_ai",
+                "value": 0.07999105751514435,
+                "raw": null,
+                "raw_unit": null,
+                "weight": 1.0,
+                "note": "P(NR-ER); ADMET-AI head"
+              }
+            ]
+          },
+          {
+            "feature": "nr_er_lbd",
+            "score": 0.006037653889507055,
+            "uncertainty": null,
+            "unit": "P(nr_er_lbd) [0,1] (up = more toxic)",
+            "n_sources": 1,
+            "sources": [
+              {
+                "model": "admet_ai",
+                "value": 0.006037653889507055,
+                "raw": null,
+                "raw_unit": null,
+                "weight": 1.0,
+                "note": "P(NR-ER-LBD); ADMET-AI head"
+              }
+            ]
+          },
+          {
+            "feature": "nr_ppar_gamma",
+            "score": 0.001273973612114787,
+            "uncertainty": null,
+            "unit": "P(nr_ppar_gamma) [0,1] (up = more toxic)",
+            "n_sources": 1,
+            "sources": [
+              {
+                "model": "admet_ai",
+                "value": 0.001273973612114787,
+                "raw": null,
+                "raw_unit": null,
+                "weight": 1.0,
+                "note": "P(NR-PPAR-gamma); ADMET-AI head"
+              }
+            ]
+          },
+          {
+            "feature": "sr_are",
+            "score": 0.033142752945423126,
+            "uncertainty": null,
+            "unit": "P(sr_are) [0,1] (up = more toxic)",
+            "n_sources": 1,
+            "sources": [
+              {
+                "model": "admet_ai",
+                "value": 0.033142752945423126,
+                "raw": null,
+                "raw_unit": null,
+                "weight": 1.0,
+                "note": "P(SR-ARE); ADMET-AI head"
+              }
+            ]
+          },
+          {
+            "feature": "sr_atad5",
+            "score": 0.0020492947660386562,
+            "uncertainty": null,
+            "unit": "P(sr_atad5) [0,1] (up = more toxic)",
+            "n_sources": 1,
+            "sources": [
+              {
+                "model": "admet_ai",
+                "value": 0.0020492947660386562,
+                "raw": null,
+                "raw_unit": null,
+                "weight": 1.0,
+                "note": "P(SR-ATAD5); ADMET-AI head"
+              }
+            ]
+          },
+          {
+            "feature": "sr_hse",
+            "score": 0.0036127609200775623,
+            "uncertainty": null,
+            "unit": "P(sr_hse) [0,1] (up = more toxic)",
+            "n_sources": 1,
+            "sources": [
+              {
+                "model": "admet_ai",
+                "value": 0.0036127609200775623,
+                "raw": null,
+                "raw_unit": null,
+                "weight": 1.0,
+                "note": "P(SR-HSE); ADMET-AI head"
+              }
+            ]
+          },
+          {
+            "feature": "sr_mmp",
+            "score": 0.012687236070632935,
+            "uncertainty": null,
+            "unit": "P(sr_mmp) [0,1] (up = more toxic)",
+            "n_sources": 1,
+            "sources": [
+              {
+                "model": "admet_ai",
+                "value": 0.012687236070632935,
+                "raw": null,
+                "raw_unit": null,
+                "weight": 1.0,
+                "note": "P(SR-MMP); ADMET-AI head"
+              }
+            ]
+          },
+          {
+            "feature": "sr_p53",
+            "score": 0.0039321440272033215,
+            "uncertainty": null,
+            "unit": "P(sr_p53) [0,1] (up = more toxic)",
+            "n_sources": 1,
+            "sources": [
+              {
+                "model": "admet_ai",
+                "value": 0.0039321440272033215,
+                "raw": null,
+                "raw_unit": null,
+                "weight": 1.0,
+                "note": "P(SR-p53); ADMET-AI head"
+              }
+            ]
+          },
+          {
+            "feature": "acute_ld50",
+            "score": 2.5028891563415527,
+            "uncertainty": null,
+            "unit": "log(1/(mol/kg)) (up = more acutely toxic)",
+            "n_sources": 1,
+            "sources": [
+              {
+                "model": "admet_ai",
+                "value": 2.5028891563415527,
+                "raw": null,
+                "raw_unit": null,
+                "weight": 1.0,
+                "note": "ADMET-AI LD50_Zhu"
+              }
+            ]
+          },
+          {
+            "feature": "tox_alerts",
+            "score": 0.0,
+            "uncertainty": null,
+            "unit": "count of BRENK tox alerts (0 = clean)",
+            "n_sources": 1,
+            "sources": [
+              {
+                "model": "toxicophores",
+                "value": 0.0,
+                "raw": null,
+                "raw_unit": null,
+                "weight": 1.0,
+                "note": null
+              }
+            ]
+          }
+        ]
+      },
+      "note": null
+    },
+    "druglikeness": {
+      "models_run": [
+        "lipinski_veber_qed"
+      ],
+      "failures": [],
+      "verdict": {
+        "endpoint": "druglikeness",
+        "mol_id": "propranolol",
+        "features": [
+          {
+            "feature": "lipinski_violations",
+            "score": 0.0,
+            "uncertainty": null,
+            "unit": "Ro5 violations 0-4 (down = more druglike)",
+            "n_sources": 1,
+            "sources": [
+              {
+                "model": "lipinski_veber_qed",
+                "value": 0.0,
+                "raw": null,
+                "raw_unit": null,
+                "weight": 1.0,
+                "note": "Lipinski Ro5 violation count"
+              }
+            ]
+          },
+          {
+            "feature": "veber_pass",
+            "score": null,
+            "uncertainty": null,
+            "unit": "boolean (True = passes Veber)",
+            "n_sources": 1,
+            "sources": [
+              {
+                "model": "lipinski_veber_qed",
+                "value": true,
+                "raw": null,
+                "raw_unit": null,
+                "weight": 1.0,
+                "note": "passes Veber rotatable-bond / TPSA rules (True = pass)"
+              }
+            ]
+          },
+          {
+            "feature": "qed",
+            "score": 0.8375057924076362,
+            "uncertainty": null,
+            "unit": "QED [0,1] (up = more druglike)",
+            "n_sources": 1,
+            "sources": [
+              {
+                "model": "lipinski_veber_qed",
+                "value": 0.8375057924076362,
+                "raw": null,
+                "raw_unit": null,
+                "weight": 1.0,
+                "note": "QED desirability"
+              }
+            ]
+          }
+        ]
+      },
+      "note": null
+    }
+  }
+}

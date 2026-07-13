@@ -1,10 +1,13 @@
 """Tests for the permeability aggregator: three separate entities, two scores DEFERRED (mixed axis).
 
 Synthetic ``OutputRecord``-shaped inputs (laptop, core env - no box, no GPU). They pin:
-- passive_permeability carries the two native reads (Caco2 log Papp, PAMPA probability) but has NO fused
-  score yet (mixed scales, deferred until calibration);
-- intestinal_absorption carries HIA_Hou (probability) + BOILED-Egg HIA (boolean), also score DEFERRED;
-- pgp_efflux is derived from admet_ai's Pgp_Broccatelli, a third separate entity (F-4).
+- passive_permeability (Caco2 log Papp + PAMPA probability) has NO fused score yet: two incompatible
+  scales, deferred until calibration -> score None;
+- intestinal_absorption (HIA_Hou probability + BOILED-Egg boolean) is also score DEFERRED;
+- pgp_efflux is derived from admet_ai's Pgp_Broccatelli, a third separate entity (F-4) that DOES score.
+
+Output shape (per feature): score, unit, interval[low,high], reads{model:harmonized}, raw{model:native},
+uncertainty{model_type:value}.
 """
 
 from __future__ import annotations
@@ -39,54 +42,41 @@ def _feat(mol, name):
     return next(f for f in mol.features if f.feature == name)
 
 
-def _src(feature, model):
-    return next(s for s in feature.sources if s.model == model)
-
-
-# ------------------------------------------------------ passive permeability: 2 reads, score deferred
-def test_passive_permeability_carries_two_native_reads_with_deferred_score():
+# ------------------------------------------------------ passive permeability: score deferred (mixed axis)
+def test_passive_permeability_score_is_deferred():
     recs = [admet_ai(caco2=-4.5, pampa=0.82)]
     f = _feat(aggregate({"m": recs}).molecules[0], PASSIVE)
-    assert f.score is None and f.uncertainty is None and f.unit is None   # mixed scales -> deferred
-    assert f.n_sources == 2
-    vals = sorted(s.value for s in f.sources)
-    assert vals == [-4.5, 0.82]                 # both native reads carried, never averaged
+    assert f.score is None and f.interval is None and f.unit is None   # mixed scales -> deferred, never averaged
 
 
-def test_passive_permeability_drops_missing_and_nonnumeric():
-    recs = [admet_ai(caco2=-4.5),
-            {"model": ModelName.admet_ai, "endpoint_values": {"PAMPA_NCATS": None},
-             "uncertainty": None, "raw": {}, "provenance": PROV}]
-    f = _feat(aggregate({"m": recs}).molecules[0], PASSIVE)
-    assert f.n_sources == 1 and f.sources[0].value == -4.5
+def test_passive_permeability_deferred_even_with_a_single_read():
+    f = _feat(aggregate({"m": [admet_ai(caco2=-4.5)]}).molecules[0], PASSIVE)
+    assert f.score is None
 
 
 # ------------------------------------------------------ intestinal absorption: prob + bool, score deferred
-def test_intestinal_absorption_carries_probability_and_boolean_with_deferred_score():
+def test_intestinal_absorption_score_is_deferred():
     recs = [admet_ai(hia=0.9), boiled_egg(True)]
     f = _feat(aggregate({"m": recs}).molecules[0], ABSORPTION)
-    assert f.score is None and f.uncertainty is None and f.unit is None
-    assert f.n_sources == 2
-    assert _src(f, "admet_ai").value == 0.9
-    assert _src(f, "boiled_egg").value is True         # boolean read carried natively
+    assert f.score is None and f.interval is None and f.unit is None
 
 
-def test_boiled_egg_false_is_still_carried():
+def test_boiled_egg_false_does_not_produce_a_score():
     f = _feat(aggregate({"m": [boiled_egg(False)]}).molecules[0], ABSORPTION)
-    assert f.n_sources == 1 and _src(f, "boiled_egg").value is False
+    assert f.score is None
 
 
-# ------------------------------------------------------ efflux derived from generalist
+# ------------------------------------------------------ efflux derived from generalist (DOES score)
 def test_pgp_efflux_derived_from_admet_ai():
     f = _feat(aggregate({"m": [admet_ai(pgp=0.44)]}).molecules[0], EFFLUX)
-    assert f.score == 0.44 and f.uncertainty is None
-    assert _src(f, "admet_ai").value == 0.44
+    assert f.score == 0.44 and f.interval is None
+    assert f.reads == {"admet_ai": 0.44}
 
 
 def test_pgp_efflux_out_of_range_rejected():
     # the pgp helper rejects a non-[0,1] value rather than clamping, so it contributes no source
     f = _feat(aggregate({"m": [admet_ai(pgp=1.7)]}).molecules[0], EFFLUX)
-    assert f.n_sources == 0 and f.score is None
+    assert f.reads == {} and f.score is None
 
 
 # ------------------------------------------------------ three features, uniform shape
@@ -98,7 +88,8 @@ def test_three_features_and_uniform_shape():
     assert mol.endpoint == Endpoint.permeability and mol.mol_id == "m"
     assert {f.feature for f in mol.features} == {PASSIVE, ABSORPTION, EFFLUX}
     assert set(type(mol).model_fields) == {"endpoint", "mol_id", "features"}
-    assert set(type(mol.features[0]).model_fields) == {"feature", "score", "uncertainty", "unit", "n_sources", "sources"}
+    assert set(type(mol.features[0]).model_fields) == {
+        "feature", "score", "unit", "interval", "reads", "raw", "uncertainty"}
 
 
 def test_missing_signals_yield_empty_features_no_crash():
@@ -107,7 +98,7 @@ def test_missing_signals_yield_empty_features_no_crash():
            "uncertainty": None, "raw": {}, "provenance": PROV}
     mol = aggregate({"m": [rec]}).molecules[0]
     for f in mol.features:
-        assert f.n_sources == 0 and f.score is None
+        assert f.reads == {} and f.score is None
 
 
 def test_multiple_molecules_independent():

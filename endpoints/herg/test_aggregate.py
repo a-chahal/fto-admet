@@ -1,18 +1,21 @@
-"""Tests for the herg aggregator: hERG_block (3-prob ensemble) + NaV1.5 / CaV1.2 context features.
+"""Tests for the herg aggregator: hERG_block (trained 4-arch fusion) + NaV1.5 / CaV1.2 context features.
 
 Synthetic ``OutputRecord``-shaped inputs (laptop, core env - no box, no GPU). They pin the science that
 must survive the shape change:
-- three identity P(block) probabilities (admet_ai / bayesherg / cardiotox_net) harmonize onto hERG_block;
-  score = equally-weighted mean, uncertainty = std over the same values;
-- CardioGenAI's "hERG pIC50" (literal space) is CARRIED as a source with value=None (raw pIC50 visible)
-  and NEVER enters the mean - the pIC50 -> P(block) mapping is DEFERRED (F-1);
+- three identity P(block) probabilities (admet_ai / bayesherg / cardiotox_net) harmonize onto hERG_block
+  (their reads) and are calibrated onto the pIC50 target by the trained spec (interval attached);
+- CardioGenAI's "hERG pIC50" (literal space) is CARRIED as a source with value=None (raw pIC50 in
+  ``raw["cardiogenai"]``) - scored from raw by the spec, never as a probability read;
+- BayeshERG's aleatoric/epistemic split and CardioTox's AD flag / Morgan on-bits ride along as native
+  uncertainty signals keyed ``model_type`` in ``f.uncertainty``;
 - NaV1.5 and CaV1.2 pIC50s are DIFFERENT entities -> their own single-source features, never fused;
-- any subset (single source -> uncertainty None; none -> score None) is tolerated.
+- any subset (none -> score None) is tolerated.
+
+Output shape (per feature): score, unit, interval[low,high], reads{model:harmonized}, raw{model:native},
+uncertainty{model_type:value}. Exact fused values are pinned in tests/test_fusion.py.
 """
 
 from __future__ import annotations
-
-import math
 
 from core.models import Endpoint, ModelName
 from endpoints.herg.aggregate import (
@@ -35,9 +38,10 @@ def bayesherg(p_block: float, alea: float | None = None, epis: float | None = No
             "uncertainty": {"aleatoric": alea, "epistemic": epis}, "raw": {}, "provenance": PROV}
 
 
-def cardiotox(p_block: float) -> dict:
+def cardiotox(p_block: float, ad_in_domain: bool | None = None, onbits: int | None = None) -> dict:
     return {"model": ModelName.cardiotox_net, "endpoint_values": {"P_block": p_block},
-            "uncertainty": None, "raw": {}, "provenance": PROV}
+            "uncertainty": {"ad_in_domain": ad_in_domain, "extra": {"morgan_onbits": onbits}},
+            "raw": {}, "provenance": PROV}
 
 
 def cardiogenai(*, herg: float | None = None, nav: float | None = None, cav: float | None = None) -> dict:
@@ -56,22 +60,24 @@ def _feat(mol, name):
     return next(f for f in mol.features if f.feature == name)
 
 
-def _src(feature, model):
-    return next(s for s in feature.sources if s.model == model)
-
-
 # -------------------------------------------------------------------------- the three probability sources
-def test_three_probabilities_are_identity_sources():
+def test_three_probabilities_are_identity_reads():
     f = _feat(aggregate({"m": [admet_ai(0.3), bayesherg(0.42), cardiotox(0.6)]}).molecules[0], HERG_BLOCK)
-    assert _src(f, "admet_ai").value == 0.3
-    assert _src(f, "bayesherg").value == 0.42
-    assert _src(f, "cardiotox_net").value == 0.6
+    assert f.reads["admet_ai"] == 0.3
+    assert f.reads["bayesherg"] == 0.42
+    assert f.reads["cardiotox_net"] == 0.6
 
 
-def test_bayesherg_note_carries_alea_epis():
+def test_bayesherg_alea_epis_ride_along_as_native_uncertainty():
     f = _feat(aggregate({"m": [bayesherg(0.42, alea=0.11, epis=0.07)]}).molecules[0], HERG_BLOCK)
-    note = _src(f, "bayesherg").note
-    assert "alea=0.11" in note and "epis=0.07" in note
+    assert f.uncertainty["bayesherg_aleatoric"] == 0.11
+    assert f.uncertainty["bayesherg_epistemic"] == 0.07
+
+
+def test_cardiotox_ad_flag_and_onbits_ride_along_as_native_uncertainty():
+    f = _feat(aggregate({"m": [cardiotox(0.6, ad_in_domain=False, onbits=120)]}).molecules[0], HERG_BLOCK)
+    assert f.uncertainty["cardiotox_net_ad_in_domain"] is False
+    assert f.uncertainty["cardiotox_net_morgan_onbits"] == 120
 
 
 def test_probabilities_gathered_and_scored_via_trained_spec():
@@ -79,31 +85,32 @@ def test_probabilities_gathered_and_scored_via_trained_spec():
     # fused value pinned in tests/test_fusion.py). Assert the reads are gathered and a calibrated pIC50
     # score + interval exist - not the old equal-weight probability mean.
     f = _feat(aggregate({"m": [admet_ai(0.4), bayesherg(0.2), cardiotox(0.6)]}).molecules[0], HERG_BLOCK)
-    assert f.n_sources == 3
-    assert f.score is not None and f.uncertainty is not None
+    assert len(f.reads) == 3
+    assert f.score is not None and f.interval is not None
 
 
 def test_convergent_sources_have_low_uncertainty_divergent_high():
     tight = _feat(aggregate({"m": [admet_ai(0.5), bayesherg(0.5), cardiotox(0.5)]}).molecules[0], HERG_BLOCK)
     wide = _feat(aggregate({"m": [admet_ai(0.1), bayesherg(0.5), cardiotox(0.9)]}).molecules[0], HERG_BLOCK)
-    assert tight.uncertainty < wide.uncertainty
+    tight_width = tight.interval[1] - tight.interval[0]
+    wide_width = wide.interval[1] - wide.interval[0]
+    assert tight_width < wide_width
 
 
 # ------------------------------------------------------ cardiogenai pIC50 now scored via from_raw (F-1 resolved)
 def test_cardiogenai_pic50_is_scored_from_raw():
     recs = [admet_ai(0.4), bayesherg(0.2), cardiotox(0.6), cardiogenai(herg=7.0)]
     f = _feat(aggregate({"m": recs}).molecules[0], HERG_BLOCK)
-    cg = _src(f, "cardiogenai")
-    assert cg.value is None                          # still value=None on the axis; its pIC50 lives in raw
-    assert cg.raw == 7.0 and cg.raw_unit == "pIC50"
-    assert f.n_sources == 4
-    assert f.score is not None                       # all four architectures contribute (cardiogenai via from_raw)
+    assert "cardiogenai" not in f.reads               # still value=None on the axis; its pIC50 lives in raw
+    assert f.raw["cardiogenai"] == 7.0
+    assert len(f.reads) == 3                           # the three probability reads
+    assert f.score is not None                         # all four architectures contribute (cardiogenai via from_raw)
 
 
 def test_cardiogenai_alone_is_scored_from_its_raw_pic50():
     f = _feat(aggregate({"m": [cardiogenai(herg=6.0)]}).molecules[0], HERG_BLOCK)
-    assert f.n_sources == 1 and f.score is not None  # scored from raw pIC50 (others imputed), no longer None
-    assert "pIC50" in _src(f, "cardiogenai").note
+    assert f.reads == {} and f.raw["cardiogenai"] == 6.0
+    assert f.score is not None                         # scored from raw pIC50 (others imputed), no longer None
 
 
 # -------------------------------------------------------------------------- nav1.5 / cav1.2 separate entities
@@ -111,22 +118,22 @@ def test_nav_and_cav_are_separate_single_source_features():
     mol = aggregate({"m": [cardiogenai(nav=5.5, cav=4.2)]}).molecules[0]
     nav = _feat(mol, NAV_BLOCK)
     cav = _feat(mol, CAV_BLOCK)
-    assert nav.score == 5.5 and nav.n_sources == 1 and nav.uncertainty is None
-    assert cav.score == 4.2 and cav.n_sources == 1 and cav.uncertainty is None
+    assert nav.score == 5.5 and nav.reads == {"cardiogenai": 5.5} and nav.interval is None
+    assert cav.score == 4.2 and cav.reads == {"cardiogenai": 4.2} and cav.interval is None
 
 
 def test_channels_never_fold_into_herg_block():
     mol = aggregate({"m": [admet_ai(0.4), cardiogenai(herg=7.0, nav=5.5, cav=4.2)]}).molecules[0]
     herg = _feat(mol, HERG_BLOCK)
     # the NaV/CaV pIC50s are their own features, never sources of hERG_block
-    assert [s.model for s in herg.sources] == ["admet_ai", "cardiogenai"]
+    assert set(herg.reads) == {"admet_ai"} and set(herg.raw) == {"cardiogenai"}
     assert herg.score is not None  # calibrated fusion of admet_ai P(block) + cardiogenai pIC50
 
 
 # -------------------------------------------------------------------------- subsets / graceful fallbacks
 def test_single_probability_source_is_calibrated():
     f = _feat(aggregate({"m": [admet_ai(0.4)]}).molecules[0], HERG_BLOCK)
-    assert f.score is not None and f.n_sources == 1   # calibrated to pIC50 (not the raw 0.4 probability)
+    assert f.score is not None and f.reads == {"admet_ai": 0.4}   # calibrated to pIC50 (not the raw 0.4)
 
 
 def test_no_herg_source_yields_null_score_no_crash():
@@ -134,14 +141,14 @@ def test_no_herg_source_yields_null_score_no_crash():
            "uncertainty": None, "raw": {}, "provenance": PROV}
     mol = aggregate({"m": [rec]}).molecules[0]
     for f in mol.features:
-        assert f.n_sources == 0 and f.score is None
+        assert f.reads == {} and f.raw == {} and f.score is None
 
 
 def test_missing_or_nonnumeric_value_is_not_a_source():
     recs = [admet_ai(0.4), {"model": ModelName.bayesherg, "endpoint_values": {"P_block": None},
                             "uncertainty": None, "raw": {}, "provenance": PROV}]
     f = _feat(aggregate({"m": recs}).molecules[0], HERG_BLOCK)
-    assert [s.model for s in f.sources] == ["admet_ai"]
+    assert set(f.reads) == {"admet_ai"}
 
 
 # -------------------------------------------------------------------------- shape / plumbing
@@ -153,7 +160,7 @@ def test_endpoint_identity_and_uniform_shape():
     assert {f.feature for f in mol.features} == {HERG_BLOCK, NAV_BLOCK, CAV_BLOCK}
     assert set(type(mol).model_fields) == {"endpoint", "mol_id", "features"}
     assert set(type(mol.features[0]).model_fields) == {
-        "feature", "score", "uncertainty", "unit", "n_sources", "sources"}
+        "feature", "score", "unit", "interval", "reads", "raw", "uncertainty"}
 
 
 def test_multiple_molecules_independent():

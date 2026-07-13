@@ -11,10 +11,11 @@ reads come from two models:
     ADMET-AI ``LD50_Zhu``       -> ``acute_ld50``, a MAGNITUDE (log 1/(mol/kg), up = more toxic), never a P.
     toxicophores ``tox_alert_count`` -> ``tox_alerts``, a BRENK structural-alert count (0 = clean).
 
-Every feature is single-source, so ``score`` = the source value and ``uncertainty`` is undefined (one
-point). A feature is emitted ONLY when its source key is present on a supplied record: a molecule with no
-ADMET-AI record simply has no probability features (no fabricated zeros). This aggregator runs in the core
-env (no box, no GPU), consumes fields already emitted by the contributing models (identified by
+Every feature is single-source, so ``build_feature`` fills ``score`` from that source (a trained spec, where
+one exists, calibrates the value and attaches a conformal interval; otherwise the lone value passes through
+with no interval). A feature is emitted ONLY when its source key is present on a supplied record: a molecule
+with no ADMET-AI record simply has no probability features (no fabricated zeros). This aggregator runs in the
+core env (no box, no GPU), consumes fields already emitted by the contributing models (identified by
 ``rec.model``, never by folder), and carries NO pass/fail verdict - the decision policy is downstream
 (CLAUDE.md §4a). ProTox is a confirmatory web read handled out of this loop (t39 SOP), not read here.
 See ``docs/ENDPOINTS.md`` for the fuller rationale.
@@ -30,9 +31,11 @@ from core.aggregate import (
     Feature,
     MoleculeVerdict,
     Source,
-    ensemble,
+    as_output_record,
     normalize_molecules,
+    num,
 )
+from core.fusion import build_feature
 from core.models import Endpoint, ModelName
 from core.schemas import OutputRecord
 
@@ -68,43 +71,24 @@ LD50_UNIT = "log(1/(mol/kg)) (up = more acutely toxic)"
 # toxicophores (t18) BRENK structural-alert count, with the matched names carried in ``raw``.
 TOX_ALERTS_FEATURE = "tox_alerts"
 TOX_ALERT_COUNT_KEY = "tox_alert_count"
-TOX_ALERT_NAMES_KEY = "tox_alert_names"
 TOX_ALERTS_UNIT = "count of BRENK tox alerts (0 = clean)"
 
 
-def _as_output_record(rec: Any) -> OutputRecord:
-    return rec if isinstance(rec, OutputRecord) else OutputRecord.model_validate(rec)
-
-
-def _num(value: Any) -> float | None:
-    """Coerce to a finite float, or ``None`` (a source with no numeric value never enters the score)."""
-    try:
-        f = float(value)
-    except (TypeError, ValueError):
-        return None
-    return f if f == f and f not in (float("inf"), float("-inf")) else None
-
-
-def _single_feature(feature: str, unit: str, sources: list[Source]) -> Feature | None:
-    """A single-source feature: ``score`` = the source value, ``uncertainty`` undefined. None if no source."""
+def _single_feature(endpoint: Endpoint, feature: str, unit: str, sources: list[Source]) -> Feature | None:
+    """A single-source feature via ``build_feature`` (trained spec calibrates if present). None if no source."""
     if not sources:
         return None
-    score, uncertainty = ensemble([s.value for s in sources], [s.weight for s in sources])
-    return Feature(feature=feature, score=score, uncertainty=uncertainty, unit=unit,
-                   n_sources=len(sources), sources=sources)
+    return build_feature(endpoint, feature, unit, sources)
 
 
 def _prob_features(records: Sequence[OutputRecord]) -> list[Feature]:
     """One P(toxic) feature per ADMET-AI classifier head that is present (built from the DRY head dict)."""
     features: list[Feature] = []
     for feature, key in ADMET_AI_PROB_HEADS.items():
-        sources: list[Source] = []
-        for rec in records:
-            if rec.model == ModelName.admet_ai:
-                v = _num((rec.endpoint_values or {}).get(key))
-                if v is not None:
-                    sources.append(Source(model="admet_ai", value=v, note=f"P({key}); ADMET-AI head"))
-        f = _single_feature(feature, f"P({feature}) [0,1] (up = more toxic)", sources)
+        sources = [Source(model="admet_ai", value=v)
+                   for rec in records if rec.model == ModelName.admet_ai
+                   for v in [num((rec.endpoint_values or {}).get(key))] if v is not None]
+        f = _single_feature(Endpoint.toxicity, feature, f"P({feature}) [0,1] (up = more toxic)", sources)
         if f is not None:
             features.append(f)
     return features
@@ -112,30 +96,22 @@ def _prob_features(records: Sequence[OutputRecord]) -> list[Feature]:
 
 def _ld50_feature(records: Sequence[OutputRecord]) -> Feature | None:
     """Acute oral LD50 magnitude (ADMET-AI ``LD50_Zhu``): a scalar read, never a probability (F-5)."""
-    sources: list[Source] = []
-    for rec in records:
-        if rec.model == ModelName.admet_ai:
-            v = _num((rec.endpoint_values or {}).get(LD50_KEY))
-            if v is not None:
-                sources.append(Source(model="admet_ai", value=v, note="ADMET-AI LD50_Zhu"))
-    return _single_feature(LD50_FEATURE, LD50_UNIT, sources)
+    sources = [Source(model="admet_ai", value=v)
+               for rec in records if rec.model == ModelName.admet_ai
+               for v in [num((rec.endpoint_values or {}).get(LD50_KEY))] if v is not None]
+    return _single_feature(Endpoint.toxicity, LD50_FEATURE, LD50_UNIT, sources)
 
 
 def _tox_alerts_feature(records: Sequence[OutputRecord]) -> Feature | None:
-    """toxicophores BRENK structural-alert count; matched names are summarized into the source note."""
-    sources: list[Source] = []
-    for rec in records:
-        if rec.model == ModelName.toxicophores:
-            v = _num((rec.endpoint_values or {}).get(TOX_ALERT_COUNT_KEY))
-            if v is not None:
-                names = rec.raw.get(TOX_ALERT_NAMES_KEY) if isinstance(rec.raw, Mapping) else None
-                note = "; ".join(str(n) for n in names) if isinstance(names, (list, tuple)) and names else None
-                sources.append(Source(model="toxicophores", value=v, note=note))
-    return _single_feature(TOX_ALERTS_FEATURE, TOX_ALERTS_UNIT, sources)
+    """toxicophores BRENK structural-alert count (the matched names stay upstream in the model's raw record)."""
+    sources = [Source(model="toxicophores", value=v)
+               for rec in records if rec.model == ModelName.toxicophores
+               for v in [num((rec.endpoint_values or {}).get(TOX_ALERT_COUNT_KEY))] if v is not None]
+    return _single_feature(Endpoint.toxicity, TOX_ALERTS_FEATURE, TOX_ALERTS_UNIT, sources)
 
 
 def _molecule(mol_id: str, records: Sequence[Any]) -> MoleculeVerdict:
-    recs = [_as_output_record(r) for r in records]
+    recs = [as_output_record(r) for r in records]
     features = _prob_features(recs)
     for f in (_ld50_feature(recs), _tox_alerts_feature(recs)):
         if f is not None:

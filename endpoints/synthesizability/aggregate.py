@@ -12,10 +12,10 @@ different scales, different directions):
 ``synthetic_complexity`` is a fast heuristic on structural complexity (Ertl & Schuffenhauer 2009);
 ``route_findability`` is a machine-learned "second opinion" on whether a retrosynthetic route exists.
 They answer different things, so they are two separate single-source features, never averaged into one
-number. Each is carried in the shared shape from ``core.aggregate``: a single source -> ``ensemble``
-returns ``(value, None)`` (no spread from one read). The SAscore direction (LOWER = easier) is not
-transformed here; it is recorded in the unit string so the reader keeps the inversion straight.
-See ``docs/ENDPOINTS.md`` for the fuller rationale.
+number. Each is carried in the shared shape from ``core.aggregate``: a single source -> ``build_feature``
+yields ``score`` = the lone value with no interval (no spread from one read). The SAscore direction
+(LOWER = easier) is not transformed here; it is recorded in the unit string so the reader keeps the
+inversion straight. See ``docs/ENDPOINTS.md`` for the fuller rationale.
 """
 
 from __future__ import annotations
@@ -28,9 +28,11 @@ from core.aggregate import (
     Feature,
     MoleculeVerdict,
     Source,
-    ensemble,
+    as_output_record,
     normalize_molecules,
+    num,
 )
+from core.fusion import build_feature
 from core.models import Endpoint, ModelName
 from core.schemas import OutputRecord
 
@@ -42,50 +44,26 @@ COMPLEXITY = "synthetic_complexity"
 FINDABILITY = "route_findability"
 
 
-def _as_output_record(rec: Any) -> OutputRecord:
-    return rec if isinstance(rec, OutputRecord) else OutputRecord.model_validate(rec)
-
-
-def _num(value: Any) -> float | None:
-    """Coerce to a finite float, or ``None`` (a source with no numeric value never enters the feature)."""
-    try:
-        f = float(value)
-    except (TypeError, ValueError):
-        return None
-    return f if f == f and f not in (float("inf"), float("-inf")) else None
-
-
 def _complexity_feature(records: Sequence[OutputRecord]) -> Feature:
     """Synthetic complexity from SAscore (single source; LOWER = easier, recorded in the unit)."""
-    sources: list[Source] = []
-    for rec in records:
-        if rec.model == ModelName.sascore:
-            v = _num((rec.endpoint_values or {}).get(SASCORE_KEY))
-            if v is not None:
-                sources.append(Source(model="sascore", value=v, note="SAscore; lower = easier to synthesize"))
-    score, uncertainty = ensemble([s.value for s in sources], [s.weight for s in sources])
-    return Feature(feature=COMPLEXITY, score=score, uncertainty=uncertainty,
-                   unit="SAscore 1-10 (down = easier to synthesize)",
-                   n_sources=len(sources), sources=sources)
+    sources = [Source(model="sascore", value=v)
+               for rec in records if rec.model == ModelName.sascore
+               for v in [num((rec.endpoint_values or {}).get(SASCORE_KEY))] if v is not None]
+    return build_feature(Endpoint.synthesizability, COMPLEXITY,
+                         "SAscore 1-10 (down = easier to synthesize)", sources)
 
 
 def _findability_feature(records: Sequence[OutputRecord]) -> Feature:
     """Route findability from RAscore (single source; a DIFFERENT entity from SAscore complexity)."""
-    sources: list[Source] = []
-    for rec in records:
-        if rec.model == ModelName.rascore:
-            v = _num((rec.endpoint_values or {}).get(RASCORE_KEY))
-            if v is not None:
-                sources.append(Source(model="rascore", value=v,
-                                      note="different entity from SAscore complexity"))
-    score, uncertainty = ensemble([s.value for s in sources], [s.weight for s in sources])
-    return Feature(feature=FINDABILITY, score=score, uncertainty=uncertainty,
-                   unit="P(retrosynthesis route exists) [0,1] (up = easier)",
-                   n_sources=len(sources), sources=sources)
+    sources = [Source(model="rascore", value=v)
+               for rec in records if rec.model == ModelName.rascore
+               for v in [num((rec.endpoint_values or {}).get(RASCORE_KEY))] if v is not None]
+    return build_feature(Endpoint.synthesizability, FINDABILITY,
+                         "P(retrosynthesis route exists) [0,1] (up = easier)", sources)
 
 
 def _molecule(mol_id: str, records: Sequence[Any]) -> MoleculeVerdict:
-    recs = [_as_output_record(r) for r in records]
+    recs = [as_output_record(r) for r in records]
     features = [_complexity_feature(recs), _findability_feature(recs)]
     return MoleculeVerdict(endpoint=Endpoint.synthesizability, mol_id=mol_id, features=features)
 

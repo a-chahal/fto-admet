@@ -26,9 +26,11 @@ from core.aggregate import (
     Feature,
     MoleculeVerdict,
     Source,
+    as_output_record,
     normalize_molecules,
+    num,
 )
-from core.fusion import fuse
+from core.fusion import build_feature
 from core.models import Endpoint, ModelName
 from core.schemas import OutputRecord
 
@@ -40,49 +42,25 @@ AQUEOUS = "aqueous_solubility"
 FORMULATION = "formulation_risk"
 
 
-def _as_output_record(rec: Any) -> OutputRecord:
-    return rec if isinstance(rec, OutputRecord) else OutputRecord.model_validate(rec)
-
-
-def _num(value: Any) -> float | None:
-    """Coerce to a finite float, or ``None`` (a source with no numeric value never enters the mean)."""
-    try:
-        f = float(value)
-    except (TypeError, ValueError):
-        return None
-    return f if f == f and f not in (float("inf"), float("-inf")) else None
-
-
 def _aqueous_feature(records: Sequence[OutputRecord]) -> Feature:
     """Thermodynamic aqueous solubility (log S) from the generalist; single source."""
-    sources: list[Source] = []
-    for rec in records:
-        if rec.model == ModelName.admet_ai:
-            v = _num((rec.endpoint_values or {}).get(ADMET_AI_KEY))
-            if v is not None:
-                sources.append(Source(model="admet_ai", value=v, note="AqSolDB log S (up = more soluble)"))
-    score, uncertainty = fuse(Endpoint.solubility, AQUEOUS, sources)   # trained spec if present, else equal-weight
-    return Feature(feature=AQUEOUS, score=score, uncertainty=uncertainty,
-                   unit="log(mol/L) (up = more soluble)", n_sources=len(sources), sources=sources)
+    sources = [Source(model="admet_ai", value=v)
+               for rec in records if rec.model == ModelName.admet_ai
+               for v in [num((rec.endpoint_values or {}).get(ADMET_AI_KEY))] if v is not None]
+    return build_feature(Endpoint.solubility, AQUEOUS, "log(mol/L) (up = more soluble)", sources)
 
 
 def _formulation_feature(records: Sequence[OutputRecord]) -> Feature:
     """Solubility Forecast Index - a DIFFERENT entity from log S; single source, never fused."""
-    sources: list[Source] = []
-    for rec in records:
-        if rec.model == ModelName.sfi:
-            v = _num((rec.endpoint_values or {}).get(SFI_KEY))
-            if v is not None:
-                sources.append(Source(model="sfi", value=v,
-                                      note="different entity from thermodynamic solubility; not fused with logS"))
-    score, uncertainty = fuse(Endpoint.solubility, FORMULATION, sources)   # untrained -> equal-weight fallback
-    return Feature(feature=FORMULATION, score=score, uncertainty=uncertainty,
-                   unit="Solubility Forecast Index (down = more soluble / lower formulation risk)",
-                   n_sources=len(sources), sources=sources)
+    sources = [Source(model="sfi", value=v)
+               for rec in records if rec.model == ModelName.sfi
+               for v in [num((rec.endpoint_values or {}).get(SFI_KEY))] if v is not None]
+    return build_feature(Endpoint.solubility, FORMULATION,
+                         "Solubility Forecast Index (down = more soluble / lower formulation risk)", sources)
 
 
 def _molecule(mol_id: str, records: Sequence[Any]) -> MoleculeVerdict:
-    recs = [_as_output_record(r) for r in records]
+    recs = [as_output_record(r) for r in records]
     features = [_aqueous_feature(recs), _formulation_feature(recs)]
     return MoleculeVerdict(endpoint=Endpoint.solubility, mol_id=mol_id, features=features)
 

@@ -3,10 +3,13 @@
 Synthetic ``OutputRecord``-shaped inputs (laptop, core env - no box, no GPU). They pin the science that
 must survive the shape change:
 - three single-source count features (``pains`` / ``brenk`` / ``nih``), all from the pains_brenk model;
-- score = the deterministic count, uncertainty always None (a substructure tally has no spread);
-- counts are NEVER ensembled across models - each feature carries exactly one source;
-- pains_brenk's backing match names are summarized into the Source note (raw stays scalar, not a list);
-- a clean molecule (count 0) still reports a source; a missing source yields an empty feature, no crash.
+- score = the deterministic count, interval always None (a substructure tally has no spread), and no
+  native uncertainty (uncertainty stays an empty dict);
+- counts are NEVER ensembled across models - each feature carries exactly one read;
+- a clean molecule (count 0) still reports a read; a missing source yields an empty feature, no crash.
+
+Output shape (per feature): score, unit, interval[low,high], reads{model:harmonized}, raw{model:native},
+uncertainty{model_type:value}.
 """
 
 from __future__ import annotations
@@ -45,10 +48,6 @@ def _feat(mol, name):
     return next(f for f in mol.features if f.feature == name)
 
 
-def _src(feature, model):
-    return next(s for s in feature.sources if s.model == model)
-
-
 # -------------------------------------------------------------------------- counts as the feature score
 def test_pains_brenk_nih_counts_are_the_feature_score():
     recs = [pains_brenk(
@@ -60,36 +59,23 @@ def test_pains_brenk_nih_counts_are_the_feature_score():
     mol = aggregate({"m": recs}).molecules[0]
     for name, exp in ((PAINS, 2.0), (BRENK, 1.0), (NIH, 1.0)):
         f = _feat(mol, name)
-        assert f.score == exp and f.uncertainty is None and f.n_sources == 1
+        assert f.score == exp and f.interval is None and f.uncertainty == {}
+        assert f.reads == {"pains_brenk": exp}
 
 
-def test_nih_count_comes_from_pains_brenk_with_named_matches():
+def test_nih_count_comes_from_pains_brenk():
     mol = aggregate({"m": [pains_brenk(nih=1, nih_matches=[{"name": "reactive_alkyl_halide", "atoms": [3]}])]}).molecules[0]
     n = _feat(mol, NIH)
-    assert n.score == 1.0 and n.uncertainty is None and n.n_sources == 1
-    s = _src(n, "pains_brenk")
-    assert s.value == 1.0 and "reactive_alkyl_halide" in s.note
-
-
-def test_match_names_are_summarized_into_note_not_into_raw():
-    recs = [pains_brenk(pains=2, pains_matches=[
-        {"name": "quinone_A", "atoms": [1, 2]}, {"name": "catechol_A", "atoms": [4]},
-    ])]
-    s = _src(_feat(aggregate({"m": recs}).molecules[0], PAINS), "pains_brenk")
-    assert "quinone_A" in s.note and "catechol_A" in s.note
-    assert s.raw is None                       # raw stays scalar - the match list never lands here
-
-
-def test_note_when_no_named_matches():
-    s = _src(_feat(aggregate({"m": [pains_brenk(pains=1)]}).molecules[0], PAINS), "pains_brenk")
-    assert s.note == "no named matches"
+    assert n.score == 1.0 and n.interval is None
+    assert n.reads == {"pains_brenk": 1.0}
 
 
 # -------------------------------------------------------------------------- clean molecule / determinism
 def test_clean_molecule_reports_zero_counts_not_absent():
     mol = aggregate({"m": [pains_brenk(pains=0, brenk=0, nih=0)]}).molecules[0]
     for name in (PAINS, BRENK, NIH):
-        assert _feat(mol, name).score == 0.0 and _feat(mol, name).n_sources == 1
+        f = _feat(mol, name)
+        assert f.score == 0.0 and f.reads == {"pains_brenk": 0.0}
 
 
 def test_counts_are_never_ensembled_across_models():
@@ -97,8 +83,8 @@ def test_counts_are_never_ensembled_across_models():
     recs = [pains_brenk(pains=0, brenk=0, nih=0), admet_ai(pains_alert=2, brenk_alert=5)]
     mol = aggregate({"m": recs}).molecules[0]
     p = _feat(mol, PAINS)
-    assert p.n_sources == 1 and p.score == 0.0
-    assert [s.model for s in p.sources] == ["pains_brenk"]
+    assert p.score == 0.0
+    assert set(p.reads) == {"pains_brenk"}
 
 
 # -------------------------------------------------------------------------- subsets / graceful fallbacks
@@ -108,13 +94,14 @@ def test_missing_source_yields_empty_feature_no_crash():
     mol = aggregate({"m": [rec]}).molecules[0]
     for name in (PAINS, BRENK, NIH):
         f = _feat(mol, name)
-        assert f.n_sources == 0 and f.score is None and f.uncertainty is None
+        assert f.reads == {} and f.score is None and f.interval is None
 
 
 def test_null_count_is_not_a_source():
     mol = aggregate({"m": [pains_brenk(pains=None, brenk=None, nih=None)]}).molecules[0]
     for name in (PAINS, BRENK, NIH):
-        assert _feat(mol, name).n_sources == 0 and _feat(mol, name).score is None
+        f = _feat(mol, name)
+        assert f.reads == {} and f.score is None
 
 
 # -------------------------------------------------------------------------- shape / plumbing
@@ -126,7 +113,7 @@ def test_endpoint_identity_and_uniform_shape():
     assert {f.feature for f in mol.features} == {PAINS, BRENK, NIH}
     assert set(type(mol).model_fields) == {"endpoint", "mol_id", "features"}
     assert set(type(mol.features[0]).model_fields) == {
-        "feature", "score", "uncertainty", "unit", "n_sources", "sources"}
+        "feature", "score", "unit", "interval", "reads", "raw", "uncertainty"}
 
 
 def test_multiple_molecules_independent():
