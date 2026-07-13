@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from training.split import murcko_scaffold, scaffold_split
+from training.split import murcko_scaffold, scaffold_kfold, scaffold_split
 
 # Eight distinct ring systems, four terminal-chain analogs each (Murcko strips the chain -> shared core).
 _CORES = ("c1ccccc1", "c1ccccn1", "c1cccc2ccccc12", "c1cccc2ccccc2n1",
@@ -44,3 +44,19 @@ def test_random_fallback_when_too_few_scaffolds():
 def test_empty():
     tr, cal, te = scaffold_split([], seed=0)
     assert len(tr) == len(cal) == len(te) == 0
+
+
+def test_kfold_partitions_and_scaffolds_disjoint():
+    folds = scaffold_kfold(_MULTI_SCAFFOLD, k=4, seed=0)
+    assert len(folds) == 4
+    _all_indices_partitioned(folds, len(_MULTI_SCAFFOLD))       # every row tested exactly once
+    scaf = [murcko_scaffold(s) for s in _MULTI_SCAFFOLD]
+    for a in range(4):                                          # no scaffold shared across two folds
+        for b in range(a + 1, 4):
+            assert not ({scaf[i] for i in folds[a]} & {scaf[i] for i in folds[b]})
+
+
+def test_kfold_round_robin_fallback_when_too_few_scaffolds():
+    smiles = [f"{'C' * i}c1ccccc1" for i in range(1, 11)]       # one scaffold < k -> round-robin, still a partition
+    folds = scaffold_kfold(smiles, k=5, seed=0)
+    _all_indices_partitioned(folds, len(smiles))

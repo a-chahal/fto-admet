@@ -78,3 +78,33 @@ def scaffold_split(
         np.array(sorted(buckets[1]), dtype=int),
         np.array(sorted(buckets[2]), dtype=int),
     )
+
+
+def scaffold_kfold(smiles: Sequence[str], k: int = 5, seed: int = 0) -> list[np.ndarray]:
+    """Partition rows into ``k`` scaffold-disjoint folds (each scaffold in exactly one fold).
+
+    Returns a list of ``k`` positional-index arrays (the test fold for each split). Assigns whole scaffold
+    groups largest-first to the currently-smallest fold, so folds are balanced and no scaffold spans two
+    folds. Used for k-fold scaffold cross-validation: every row is a test point exactly once, so the pooled
+    out-of-fold prediction uses the whole set as test (a far tighter metric CI than one small held-out split).
+    Falls back to a round-robin over shuffled rows when there are fewer than ``k`` scaffolds.
+    """
+    n = len(smiles)
+    if n == 0:
+        return [np.array([], dtype=int) for _ in range(k)]
+
+    groups: dict[str, list[int]] = defaultdict(list)
+    for i, s in enumerate(smiles):
+        groups[murcko_scaffold(str(s))].append(i)
+
+    if len(groups) < k:  # too few scaffolds to fill k folds: deterministic round-robin over shuffled rows
+        rng = np.random.default_rng(seed)
+        perm = rng.permutation(n)
+        return [np.array(sorted(perm[f::k]), dtype=int) for f in range(k)]
+
+    ordered = sorted(groups.items(), key=lambda kv: (-len(kv[1]), kv[0]))  # largest first, ties by scaffold
+    folds: list[list[int]] = [[] for _ in range(k)]
+    for _, idx in ordered:
+        j = min(range(k), key=lambda f: len(folds[f]))  # feed the currently-smallest fold
+        folds[j].extend(idx)
+    return [np.array(sorted(f), dtype=int) for f in folds]
