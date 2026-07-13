@@ -34,6 +34,14 @@ from training import datasets as ds
 from training.datasets import biogen  # noqa: F401  (import registers the biogen loader)
 from training.datasets import chembl_herg  # noqa: F401  (registers the temporal hERG loader)
 from training.datasets import kpuu  # noqa: F401  (registers the Kp,uu,brain compilation loader)
+from training.datasets import chembl_logd  # noqa: F401  (registers the ChEMBL logD loader)
+from training.datasets import catmos  # noqa: F401  (registers the CATMoS LD50 loader)
+from training.datasets import cpdb  # noqa: F401  (registers the CPDB carcinogenicity loader)
+from training.datasets import dilirank  # noqa: F401  (registers the DILIrank loader)
+from training.datasets import hansen_ames  # noqa: F401  (registers the Hansen Ames loader)
+from training.datasets import niceatm_llna  # noqa: F401  (registers the NICEATM LLNA loader)
+from training.datasets import tox21_original  # noqa: F401  (registers the Tox21 loader)
+from training.datasets import fda_cl  # noqa: F401  (registers the FDA temporal CL loader)
 from training import fit as fitmod
 
 _REPO = Path(__file__).resolve().parent.parent
