@@ -1,0 +1,75 @@
+{
+  "feature": "logD",
+  "endpoint": "lipophilicity",
+  "target": {
+    "name": "logD7.4",
+    "units": "log",
+    "transform": "identity"
+  },
+  "sources": [
+    {
+      "model": "admet_ai",
+      "kind": "linear",
+      "params": [
+        0.8751595196887252,
+        0.46842445173225883
+      ],
+      "impute_value": 2.4691020486435926
+    },
+    {
+      "model": "rdkit_crippen",
+      "kind": "linear",
+      "params": [
+        0.4838621460549235,
+        0.817417622339531
+      ],
+      "impute_value": 2.4691020486435917
+    },
+    {
+      "model": "swissadme",
+      "kind": "linear",
+      "params": [
+        0.626210924210804,
+        0.3346658576079816
+      ],
+      "impute_value": 2.469102048643593
+    }
+  ],
+  "fusion": {
+    "weights": {
+      "admet_ai": 0.8875636954284624,
+      "rdkit_crippen": 0.0,
+      "swissadme": 0.12525579524060385
+    },
+    "intercept": 0.0,
+    "method": "nnls",
+    "regularization": 0.1
+  },
+  "uncertainty": {
+    "method": "normalized_conformal",
+    "alpha": 0.1,
+    "quantile": 7.9532330984006565,
+    "scale": "disagreement_std",
+    "scale_floor": 0.05,
+    "constant_width": null
+  },
+  "provenance": {
+    "dataset": "chembl_temporal_logD",
+    "dataset_hash": "sha256:c6c686d71a31f95a",
+    "exclusion_index_hash": null,
+    "n_train": 10690,
+    "n_calib": 3563,
+    "metrics": {
+      "test_mae": 0.8327479944833917,
+      "test_r2": 0.4632820568579856,
+      "test_spearman": 0.7090108315044933,
+      "best_single_source_r2": 0.44753031829996237,
+      "fusion_uplift_r2": 0.015751738558023254,
+      "test_conformal_coverage": 0.9101880437833286,
+      "n_test": 3563.0
+    },
+    "trained_at": null,
+    "git_sha": "ab2774db0cf83b0ec1436bef2603b5eb408903c3",
+    "notes": null
+  }
+}
